@@ -20,33 +20,38 @@
     "min_price": {
       "title": "Min Price ($/month)",
       "type": "integer",
+      "description": "Minimum monthly rent to include in results",
       "minimum": 0
     },
     "max_price": {
       "title": "Max Price ($/month)",
       "type": "integer",
+      "description": "Maximum monthly rent to include in results",
       "minimum": 0
     },
     "target_price": {
       "title": "Target Price ($/month)",
       "type": "integer",
-      "description": "Ideal price — used for ranking. Listings closer to this score higher.",
+      "description": "Ideal price used for ranking. Listings closer to this score higher.",
       "minimum": 0
     },
     "min_bedrooms": {
       "title": "Min Bedrooms",
       "type": "integer",
+      "description": "Minimum number of bedrooms (0 = studio)",
       "minimum": 0,
       "default": 1
     },
     "max_bedrooms": {
       "title": "Max Bedrooms",
       "type": "integer",
+      "description": "Maximum number of bedrooms",
       "minimum": 0
     },
     "min_bathrooms": {
       "title": "Min Bathrooms",
       "type": "number",
+      "description": "Minimum number of bathrooms",
       "minimum": 1,
       "default": 1
     },
