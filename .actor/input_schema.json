@@ -1,0 +1,95 @@
+{
+  "title": "Apartment Search",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "zipcodes": {
+      "title": "ZIP Codes",
+      "type": "array",
+      "description": "ZIP codes to search (e.g. 11215, 10001)",
+      "editor": "stringList",
+      "default": []
+    },
+    "neighborhoods": {
+      "title": "Neighborhoods",
+      "type": "array",
+      "description": "Neighborhood names to search (e.g. Astoria, Park Slope)",
+      "editor": "stringList",
+      "default": []
+    },
+    "min_price": {
+      "title": "Min Price ($/month)",
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_price": {
+      "title": "Max Price ($/month)",
+      "type": "integer",
+      "minimum": 0
+    },
+    "target_price": {
+      "title": "Target Price ($/month)",
+      "type": "integer",
+      "description": "Ideal price — used for ranking. Listings closer to this score higher.",
+      "minimum": 0
+    },
+    "min_bedrooms": {
+      "title": "Min Bedrooms",
+      "type": "integer",
+      "minimum": 0,
+      "default": 1
+    },
+    "max_bedrooms": {
+      "title": "Max Bedrooms",
+      "type": "integer",
+      "minimum": 0
+    },
+    "min_bathrooms": {
+      "title": "Min Bathrooms",
+      "type": "number",
+      "minimum": 1,
+      "default": 1
+    },
+    "pets_allowed": {
+      "title": "Must Allow Pets",
+      "type": "boolean",
+      "description": "Filter to only pet-friendly listings",
+      "default": false
+    },
+    "availability_before": {
+      "title": "Available Before Date",
+      "type": "string",
+      "description": "Only return listings available before this date (YYYY-MM-DD)",
+      "editor": "textfield"
+    },
+    "max_subway_distance_miles": {
+      "title": "Max Distance to Subway (miles)",
+      "type": "number",
+      "description": "Hard filter — listings beyond this distance are excluded",
+      "default": 0.5
+    },
+    "preferred_subway_lines": {
+      "title": "Preferred Subway Lines",
+      "type": "array",
+      "description": "Listings near these lines score higher (e.g. A, C, E, 1, L)",
+      "editor": "stringList",
+      "default": []
+    },
+    "results_per_run": {
+      "title": "Results Per Run",
+      "type": "integer",
+      "description": "Number of top-ranked results to return",
+      "default": 5,
+      "minimum": 1,
+      "maximum": 50
+    },
+    "sites": {
+      "title": "Sites to Search",
+      "type": "array",
+      "description": "Which listing sites to scrape",
+      "editor": "stringList",
+      "default": ["craigslist", "zillow", "apartments_com", "realtor"]
+    }
+  },
+  "required": []
+}

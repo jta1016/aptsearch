@@ -1,0 +1,12 @@
+{
+  "actorSpecification": 1,
+  "name": "aptsearch",
+  "title": "Apartment Search",
+  "description": "Scrapes Craigslist, Zillow, Apartments.com, and Realtor.com and returns top-ranked listings matching your criteria.",
+  "version": "0.1",
+  "meta": {
+    "templateId": "python-playwright"
+  },
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
