@@ -311,7 +311,8 @@ class StreetEasyScraper:
     async def _store_html_preview(self, url: str, html: str) -> None:
         if not (Actor.is_at_home() or getattr(Actor, "config", None)):
             return
-        key = f"streeteasy-preview-{re.sub(r'[^\\w]+', '-', url).strip('-').lower()[:90]}"
+        key_suffix = re.sub(r"[^\w]+", "-", url).strip("-").lower()[:90]
+        key = f"streeteasy-preview-{key_suffix}"
         value = {"url": url, "html_preview": html[:4000]}
         try:
             await Actor.set_value(key, value)
