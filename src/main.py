@@ -14,6 +14,7 @@ from scrapers.zillow import ZillowScraper
 from scrapers.apartments_com import ApartmentsComScraper
 from scrapers.padmapper import PadmapperScraper
 from scrapers.realtor import RealtorScraper
+from scrapers.streeteasy import StreetEasyScraper
 from ranker import rank_listings
 
 SCRAPER_MAP = {
@@ -22,6 +23,7 @@ SCRAPER_MAP = {
     "zillow": ZillowScraper,
     "apartments_com": ApartmentsComScraper,
     "realtor": RealtorScraper,
+    "streeteasy": StreetEasyScraper,
 }
 
 
@@ -52,7 +54,7 @@ async def main():
             "max_subway_distance_miles": inp.get("max_subway_distance_miles"),
             "preferred_subway_lines": inp.get("preferred_subway_lines") or [],
             "results_per_run": inp.get("results_per_run", 20),
-            "sites": inp.get("sites") or ["craigslist", "padmapper", "zillow", "apartments_com", "realtor"],
+            "sites": inp.get("sites") or ["craigslist", "padmapper", "streeteasy", "zillow", "apartments_com", "realtor"],
         }
 
         Actor.log.info(f"Search criteria: {criteria}")
@@ -227,6 +229,7 @@ def _build_email_html(listings: list, criteria: dict, inp: dict, new_count: int)
         "craigslist": "Craigslist",
         "padmapper": "PadMapper",
         "zillow": "Zillow",
+        "streeteasy": "StreetEasy",
         "apartments_com": "Apartments.com",
         "realtor": "Realtor.com",
     }

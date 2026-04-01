@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 from scrapers.zillow import ZillowScraper
 from scrapers.apartments_com import ApartmentsComScraper
 from scrapers.realtor import RealtorScraper
+from scrapers.streeteasy import StreetEasyScraper
 
 CRITERIA = {
     "zipcodes": ["11101"],
@@ -23,6 +24,7 @@ CRITERIA = {
 async def main():
     scrapers = [
         ("Zillow", ZillowScraper(CRITERIA)),
+        ("StreetEasy", StreetEasyScraper(CRITERIA)),
         ("Apartments.com", ApartmentsComScraper(CRITERIA)),
         ("Realtor.com", RealtorScraper(CRITERIA)),
     ]
