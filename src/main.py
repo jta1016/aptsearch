@@ -1,6 +1,9 @@
 import asyncio
 import sys
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Make src/ importable when running as "python src/main.py"
 sys.path.insert(0, os.path.dirname(__file__))
@@ -25,20 +28,20 @@ async def main():
         inp = await Actor.get_input() or {}
 
         criteria = {
-            "zipcodes": inp.get("zipcodes", []),
-            "neighborhoods": inp.get("neighborhoods", []),
+            "zipcodes": inp.get("zipcodes") or [],
+            "neighborhoods": inp.get("neighborhoods") or [],
             "min_price": inp.get("min_price"),
             "max_price": inp.get("max_price"),
             "target_price": inp.get("target_price"),
-            "min_bedrooms": inp.get("min_bedrooms", 1),
+            "min_bedrooms": inp.get("min_bedrooms"),
             "max_bedrooms": inp.get("max_bedrooms"),
-            "min_bathrooms": inp.get("min_bathrooms", 1),
+            "min_bathrooms": inp.get("min_bathrooms"),
             "pets_allowed": inp.get("pets_allowed", False),
             "availability_before": inp.get("availability_before"),
-            "max_subway_distance_miles": inp.get("max_subway_distance_miles", 0.5),
-            "preferred_subway_lines": inp.get("preferred_subway_lines", []),
-            "results_per_run": inp.get("results_per_run", 5),
-            "sites": inp.get("sites", ["craigslist", "zillow", "apartments_com", "realtor"]),
+            "max_subway_distance_miles": inp.get("max_subway_distance_miles"),
+            "preferred_subway_lines": inp.get("preferred_subway_lines") or [],
+            "results_per_run": inp.get("results_per_run", 20),
+            "sites": inp.get("sites") or ["craigslist", "zillow", "apartments_com", "realtor"],
         }
 
         Actor.log.info(f"Search criteria: {criteria}")
@@ -71,7 +74,7 @@ async def main():
 
         Actor.log.info(f"Returning top {len(top_n)} results")
 
-        # Output clean summary for each result
+        # Build output
         output = []
         for i, listing in enumerate(top_n, 1):
             station = listing.get("_score_detail", {}).get("nearest_station") or {}
@@ -95,6 +98,114 @@ async def main():
             })
 
         await Actor.push_data(output)
+
+        # Send results email if recipient is configured
+        recipient = inp.get("email") or os.environ.get("RESULTS_EMAIL")
+        if recipient and output:
+            send_results_email(recipient, output, criteria)
+        elif recipient and not output:
+            Actor.log.info("No results to email.")
+        else:
+            Actor.log.info("No email recipient configured — skipping email.")
+
+
+def send_results_email(recipient: str, listings: list, criteria: dict):
+    smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+
+    if not smtp_user or not smtp_pass:
+        Actor.log.warning(
+            "Email skipped: set SMTP_USER and SMTP_PASS in Apify environment variables."
+        )
+        return
+
+    subject = f"Apt Search: {len(listings)} listing{'s' if len(listings) != 1 else ''} found"
+    html = _build_email_html(listings, criteria)
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = recipient
+    msg.attach(MIMEText(html, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        Actor.log.info(f"Email sent to {recipient}")
+    except Exception as e:
+        Actor.log.warning(f"Email failed: {e}")
+
+
+def _build_email_html(listings: list, criteria: dict) -> str:
+    source_labels = {
+        "craigslist": "Craigslist",
+        "zillow": "Zillow",
+        "apartments_com": "Apartments.com",
+        "realtor": "Realtor.com",
+    }
+
+    rows = []
+    for item in listings:
+        price = f"${item['price']:,}/mo" if item.get("price") else "Price N/A"
+        beds = f"{item['bedrooms']} bd" if item.get("bedrooms") is not None else ""
+        baths = f"{item['bathrooms']} ba" if item.get("bathrooms") is not None else ""
+        meta = " · ".join(filter(None, [beds, baths]))
+        source = source_labels.get(item.get("source", ""), item.get("source", ""))
+        subway = ""
+        if item.get("nearest_subway"):
+            subway = f" · 🚇 {item['nearest_subway']} ({item.get('subway_distance_miles', 0):.2f} mi)"
+        img_html = (
+            f'<img src="{item["image_url"]}" width="280" style="border-radius:8px;display:block;margin-bottom:8px" />'
+            if item.get("image_url")
+            else ""
+        )
+        rows.append(f"""
+        <tr>
+          <td style="padding:16px;border-bottom:1px solid #e5e5e3;vertical-align:top">
+            {img_html}
+            <div style="font-size:20px;font-weight:700;margin-bottom:4px">{price}</div>
+            <div style="font-size:13px;color:#6b7280;margin-bottom:4px">{meta}{subway}</div>
+            <div style="font-size:13px;margin-bottom:8px">{item.get('address') or item.get('title') or '—'}</div>
+            <div style="font-size:11px;color:#6b7280;margin-bottom:8px">#{item['rank']} · {source}</div>
+            <a href="{item['url']}" style="display:inline-block;background:#2563eb;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500">View Listing →</a>
+          </td>
+        </tr>""")
+
+    neighborhoods = ", ".join(criteria.get("neighborhoods") or [])
+    zipcodes = ", ".join(criteria.get("zipcodes") or [])
+    location_summary = neighborhoods or zipcodes or "New York City"
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7f5;margin:0;padding:24px">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto">
+    <tr>
+      <td style="background:#2563eb;padding:20px 24px;border-radius:12px 12px 0 0">
+        <div style="color:#fff;font-size:20px;font-weight:700">🏠 Apt Search Results</div>
+        <div style="color:#bfdbfe;font-size:13px;margin-top:4px">{len(listings)} listing{'s' if len(listings) != 1 else ''} · {location_summary}</div>
+      </td>
+    </tr>
+    <tr>
+      <td style="background:#fff;border-radius:0 0 12px 12px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          {''.join(rows)}
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px;text-align:center;font-size:12px;color:#9ca3af">
+        Sent by Apt Search · Manage your searches at your Apt Search site
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
 
 
 asyncio.run(main())

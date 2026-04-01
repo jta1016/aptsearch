@@ -1,3 +1,11 @@
 [build]
   publish = "webapp/static"
   functions = "netlify/functions"
+
+# Ensure /api/apify always routes to the serverless function,
+# regardless of whether Functions v2 path routing is active.
+[[redirects]]
+  from = "/api/apify"
+  to = "/.netlify/functions/apify"
+  status = 200
+  force = true

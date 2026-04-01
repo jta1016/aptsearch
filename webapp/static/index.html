@@ -327,6 +327,23 @@
 
     .info-box { background: var(--tag-bg); border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #1e40af; margin-top: 16px; line-height: 1.6; }
 
+    /* ── Schedule section ── */
+    .schedule-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .schedule-item-left { display: flex; flex-direction: column; gap: 2px; }
+    .schedule-label { font-size: 13px; font-weight: 500; }
+    .schedule-meta { font-size: 12px; color: var(--muted); }
+    .sched-toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .sched-toggle-row label { font-size: 13px; font-weight: 500; cursor: pointer; }
+
     /* ── Buttons ── */
     .btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface); }
     .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -494,7 +511,7 @@
         <button class="tab" onclick="switchTab('settings', this)">Settings</button>
       </div>
       <button id="run-btn" onclick="runNow()">
-        <span id="run-label">Run Now</span>
+        <span id="run-label">Search</span>
       </button>
     </div>
   </header>
@@ -633,8 +650,65 @@
           <button class="btn" onclick="resetEmail()">Switch Account</button>
 
           <div class="info-box" style="margin-top:16px">
-            <strong>Daily runs</strong> happen automatically at 8am CT via a scheduled cloud agent — no computer required. Results show up here and in your Gmail drafts.
+            <strong>Daily runs</strong> happen automatically at 8am CT via a scheduled cloud agent — no computer required. Results show up here and are emailed directly to you.<br /><br />
+            <strong>To enable email delivery:</strong> set <code>SMTP_USER</code> and <code>SMTP_PASS</code> in your Apify actor's environment variables (Settings → Environment). Gmail users: use an App Password, not your account password.
           </div>
+
+          <hr class="divider" style="margin-top:24px" />
+
+          <h3>Schedule This Search</h3>
+          <p>Save the current sidebar filters as a scheduled search. Schedules are stored locally and can be used to configure recurring Apify runs.</p>
+
+          <div class="sched-toggle-row">
+            <input type="checkbox" id="sched-enabled" onchange="toggleSchedOptions()" />
+            <label for="sched-enabled">Enable scheduled search</label>
+          </div>
+
+          <div id="sched-options" style="display:none">
+            <div class="field">
+              <label>Frequency</label>
+              <select id="sched-freq">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label>Hour</label>
+                <select id="sched-hour"></select>
+              </div>
+              <div class="field">
+                <label>Minute</label>
+                <select id="sched-minute">
+                  <option value="0">:00</option>
+                  <option value="15">:15</option>
+                  <option value="30">:30</option>
+                  <option value="45">:45</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Timezone</label>
+              <select id="sched-tz">
+                <option value="America/New_York">Eastern (ET)</option>
+                <option value="America/Chicago" selected>Central (CT)</option>
+                <option value="America/Denver">Mountain (MT)</option>
+                <option value="America/Los_Angeles">Pacific (PT)</option>
+                <option value="America/Phoenix">Arizona (no DST)</option>
+                <option value="America/Anchorage">Alaska (AKT)</option>
+                <option value="Pacific/Honolulu">Hawaii (HST)</option>
+                <option value="Europe/London">London (GMT/BST)</option>
+                <option value="Europe/Paris">Paris (CET/CEST)</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </div>
+
+            <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="saveSchedule()">Save Schedule</button>
+          </div>
+
+          <div id="saved-schedules" style="margin-top:16px"></div>
         </div>
       </div>
     </main>
@@ -692,6 +766,8 @@
     document.getElementById('app').style.display = 'block';
     const el = document.getElementById('current-email-display');
     if (el) el.textContent = userEmail;
+    initSchedHours();
+    renderSchedules();
     loadPrefs();
     loadLatestResults();
   }
@@ -737,6 +813,10 @@
   // ── Preferences ─────────────────────────────────────────────────────────────
   function buildPrefs() {
     const sites = ['craigslist','zillow','apartments_com','realtor'].filter(s => document.getElementById(`site-${s}`).checked);
+    const minBeds = parseInt(document.getElementById('f-min-beds').value);
+    const maxBeds = parseInt(document.getElementById('f-max-beds').value);
+    const minBaths = parseFloat(document.getElementById('f-min-baths').value);
+    const subwayDist = parseFloat(document.getElementById('f-subway-dist').value);
     return {
       email: document.getElementById('f-email').value.trim(),
       zipcodes: tags.zipcodes,
@@ -744,10 +824,10 @@
       min_price: parseInt(document.getElementById('f-min-price').value) || null,
       max_price: parseInt(document.getElementById('f-max-price').value) || null,
       target_price: parseInt(document.getElementById('f-target-price').value) || null,
-      min_bedrooms: parseInt(document.getElementById('f-min-beds').value) ?? 1,
-      max_bedrooms: parseInt(document.getElementById('f-max-beds').value) || null,
-      min_bathrooms: parseFloat(document.getElementById('f-min-baths').value) || 1,
-      max_subway_distance_miles: parseFloat(document.getElementById('f-subway-dist').value) || 0.5,
+      min_bedrooms: isNaN(minBeds) ? null : minBeds,
+      max_bedrooms: isNaN(maxBeds) ? null : maxBeds,
+      min_bathrooms: isNaN(minBaths) ? null : minBaths,
+      max_subway_distance_miles: isNaN(subwayDist) ? null : subwayDist,
       preferred_subway_lines: tags.preferred_subway_lines,
       availability_before: document.getElementById('f-avail-before').value || null,
       pets_allowed: document.getElementById('f-pets').checked,
@@ -808,8 +888,22 @@
     setTimeout(() => s.textContent = '', 2000);
   }
 
+  // Flush any value typed into a tag input that wasn't committed with Enter
+  function flushTagInputs() {
+    const inputMap = { zipcodes: 'zip-input', neighborhoods: 'neighborhood-input', preferred_subway_lines: 'subway-input' };
+    for (const [field, inputId] of Object.entries(inputMap)) {
+      const val = document.getElementById(inputId).value.trim().replace(/,$/, '');
+      if (val && !tags[field].includes(val)) {
+        tags[field].push(val);
+        renderTags(field);
+      }
+      document.getElementById(inputId).value = '';
+    }
+  }
+
   // ── Run ─────────────────────────────────────────────────────────────────────
   async function runNow() {
+    flushTagInputs();
     await savePrefs();
     const prefs = buildPrefs();
     const input = { ...prefs };
@@ -819,13 +913,27 @@
     document.getElementById('run-btn').disabled = true;
     document.getElementById('run-label').innerHTML = '<span class="spinner"></span>';
 
-    const r = await apifyFetch(`/acts/${ACTOR_ID}/runs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    });
+    let r;
+    try {
+      r = await apifyFetch(`/acts/${ACTOR_ID}/runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+    } catch (err) {
+      setRunStatus('error', 'Network error');
+      resetRunBtn();
+      return;
+    }
 
-    if (!r.ok) { setRunStatus('error', 'Error'); resetRunBtn(); return; }
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      let msg = 'Error';
+      try { msg = JSON.parse(errText)?.error || 'Error'; } catch {}
+      setRunStatus('error', msg.slice(0, 60));
+      resetRunBtn();
+      return;
+    }
     const { data } = await r.json();
     pollingInterval = setInterval(() => pollRun(data.id), 4000);
   }
@@ -849,7 +957,7 @@
 
   function resetRunBtn() {
     document.getElementById('run-btn').disabled = false;
-    document.getElementById('run-label').textContent = 'Run Now';
+    document.getElementById('run-label').textContent = 'Search';
   }
 
   // ── Results ─────────────────────────────────────────────────────────────────
@@ -880,7 +988,7 @@
     document.getElementById('result-count').textContent = items.length ? `${items.length} listing${items.length !== 1 ? 's' : ''}` : 'No results yet';
 
     if (!items.length) {
-      cards.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div style="font-size:48px">🏘️</div><p>No results yet — hit <strong>Run Now</strong> to search.</p></div>`;
+      cards.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div style="font-size:48px">🏘️</div><p>No results yet — hit <strong>Search</strong> to find listings.</p></div>`;
       return;
     }
     cards.innerHTML = items.map(cardHTML).join('');
@@ -900,8 +1008,21 @@
   async function loadHistory() {
     const list = document.getElementById('run-list');
     list.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
+    let r;
     try {
-      const r = await apifyFetch(`/acts/${ACTOR_ID}/runs?limit=20&desc=1`);
+      r = await apifyFetch(`/acts/${ACTOR_ID}/runs?limit=20&desc=1`);
+    } catch (err) {
+      list.innerHTML = `<div class="empty-state"><p>Network error: ${err.message}</p></div>`;
+      return;
+    }
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      let msg = `Error ${r.status}`;
+      try { msg = JSON.parse(errText)?.error || msg; } catch {}
+      list.innerHTML = `<div class="empty-state"><p>${msg}</p></div>`;
+      return;
+    }
+    try {
       const { data } = await r.json();
       const runs = data.items || [];
       if (!runs.length) { list.innerHTML = '<div class="empty-state"><div style="font-size:48px">📋</div><p>No runs yet.</p></div>'; return; }
@@ -917,7 +1038,9 @@
           <span class="run-badge ${statusClass}">${run.status}</span>
         </div>`;
       }).join('');
-    } catch { list.innerHTML = '<div class="empty-state"><p>Could not load history.</p></div>'; }
+    } catch (err) {
+      list.innerHTML = `<div class="empty-state"><p>Could not parse history response: ${err.message}</p></div>`;
+    }
   }
 
   function viewRun(datasetId, status) {
@@ -926,6 +1049,92 @@
     document.querySelectorAll('.tab')[0].classList.add('active');
     document.querySelectorAll('.tab')[1].classList.remove('active');
     loadResultsFromDataset(datasetId);
+  }
+
+  // ── Scheduling ───────────────────────────────────────────────────────────────
+  const SCHEDULES_KEY = 'apt_schedules';
+
+  function toggleSchedOptions() {
+    const enabled = document.getElementById('sched-enabled').checked;
+    document.getElementById('sched-options').style.display = enabled ? 'block' : 'none';
+  }
+
+  function initSchedHours() {
+    const sel = document.getElementById('sched-hour');
+    if (!sel) return;
+    for (let h = 0; h < 24; h++) {
+      const opt = document.createElement('option');
+      opt.value = h;
+      opt.textContent = String(h).padStart(2, '0') + ':00';
+      if (h === 8) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function saveSchedule() {
+    flushTagInputs();
+    const prefs = buildPrefs();
+    const hour = parseInt(document.getElementById('sched-hour').value);
+    const minute = parseInt(document.getElementById('sched-minute').value);
+    const tz = document.getElementById('sched-tz').value;
+    const freq = document.getElementById('sched-freq').value;
+
+    const schedule = {
+      id: Date.now(),
+      freq,
+      hour,
+      minute,
+      tz,
+      prefs,
+      createdAt: new Date().toISOString(),
+    };
+
+    const schedules = JSON.parse(localStorage.getItem(SCHEDULES_KEY) || '[]');
+    schedules.push(schedule);
+    localStorage.setItem(SCHEDULES_KEY, JSON.stringify(schedules));
+    renderSchedules();
+
+    // Reset toggle
+    document.getElementById('sched-enabled').checked = false;
+    toggleSchedOptions();
+  }
+
+  function removeSchedule(id) {
+    const schedules = JSON.parse(localStorage.getItem(SCHEDULES_KEY) || '[]');
+    localStorage.setItem(SCHEDULES_KEY, JSON.stringify(schedules.filter(s => s.id !== id)));
+    renderSchedules();
+  }
+
+  function renderSchedules() {
+    const container = document.getElementById('saved-schedules');
+    if (!container) return;
+    const schedules = JSON.parse(localStorage.getItem(SCHEDULES_KEY) || '[]');
+    if (!schedules.length) { container.innerHTML = ''; return; }
+
+    const fmt = s => {
+      const hh = String(s.hour).padStart(2, '0');
+      const mm = String(s.minute).padStart(2, '0');
+      const areas = (s.prefs.neighborhoods || []).concat(s.prefs.zipcodes || []);
+      const areaLabel = areas.length ? areas.slice(0, 3).join(', ') + (areas.length > 3 ? '…' : '') : 'All areas';
+      const siteCount = (s.prefs.sites || []).length;
+      const freqLabel = s.freq.charAt(0).toUpperCase() + s.freq.slice(1);
+      const tzShort = s.tz.split('/').pop().replace('_', ' ');
+      return { time: `${freqLabel} at ${hh}:${mm} ${tzShort}`, area: `${areaLabel} · ${siteCount} site${siteCount !== 1 ? 's' : ''}` };
+    };
+
+    container.innerHTML = `
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px">Saved Schedules</div>
+      ${schedules.map(s => {
+        const { time, area } = fmt(s);
+        return `<div class="schedule-item">
+          <div class="schedule-item-left">
+            <div class="schedule-label">${time}</div>
+            <div class="schedule-meta">${area}</div>
+          </div>
+          <button class="btn" style="font-size:12px;padding:4px 10px" onclick="removeSchedule(${s.id})">Remove</button>
+        </div>`;
+      }).join('')}
+    `;
   }
 
   init();

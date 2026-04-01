@@ -3,17 +3,38 @@
  * Frontend calls: /api/apify?path=/acts/jta93~aptsearch/runs
  */
 export default async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+    });
+  }
+
   const token = process.env.APIFY_TOKEN;
-  if (!token) return new Response('APIFY_TOKEN not set', { status: 500 });
+  if (!token) {
+    return new Response(JSON.stringify({ error: 'APIFY_TOKEN not configured in Netlify environment variables' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
 
   const url = new URL(req.url);
   const pathParam = url.searchParams.get('path');
-  if (!pathParam) return new Response('Missing path param', { status: 400 });
+  if (!pathParam) {
+    return new Response(JSON.stringify({ error: 'Missing path param' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
 
   // The path param may contain embedded query strings (e.g. /acts/.../runs?limit=20&desc=1).
   // Parse them out and merge into a single clean query string with the token.
   const apifyBase = new URL(`https://api.apify.com/v2${pathParam}`);
-  // Merge any query params that were embedded in the path
   const params = new URLSearchParams(apifyBase.search);
   // Forward any extra query params from the original request (except 'path')
   for (const [k, v] of url.searchParams) {
@@ -26,11 +47,19 @@ export default async (req) => {
     ? await req.text()
     : undefined;
 
-  const resp = await fetch(apifyBase.href, {
-    method: req.method,
-    headers: { 'Content-Type': 'application/json' },
-    body,
-  });
+  let resp;
+  try {
+    resp = await fetch(apifyBase.href, {
+      method: req.method,
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: `Fetch failed: ${err.message}` }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
 
   const text = await resp.text();
   return new Response(text, {

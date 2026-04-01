@@ -133,6 +133,20 @@ def score_listing(listing: dict, criteria: dict) -> tuple[float, dict]:
         detail["availability"] = 5
         total += 5
 
+    # --- Neighborhood fuzzy match (bonus: up to 10 pts) ---
+    # Uses case-insensitive substring matching so "park slope", "Park Slope",
+    # and partial matches like "slope" all work.
+    neighborhoods = [n.strip() for n in criteria.get("neighborhoods", []) if n and n.strip()]
+    if neighborhoods:
+        searchable = (
+            (listing.get("address") or "") + " " + (listing.get("title") or "")
+        ).lower()
+        if any(n.lower() in searchable for n in neighborhoods):
+            detail["neighborhood"] = 10
+            total += 10
+        else:
+            detail["neighborhood"] = 0
+
     detail["total"] = round(total, 1)
     return round(total, 1), detail
 
