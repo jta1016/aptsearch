@@ -180,19 +180,7 @@ class ApartmentsComScraper:
         proxy_url: str | None = None,
         session_id: str | None = None,
     ) -> list[dict]:
-        min_price = self.criteria.get("min_price")
-        max_price = self.criteria.get("max_price")
-        min_beds = self.criteria.get("min_bedrooms", 0) or 0
-
-        # Apartments.com URL for zip code search with filters in the path.
-        # e.g. https://www.apartments.com/11101/min-price-3500-max-price-6000-1-bedrooms/
-        price_seg = ""
-        if min_price:
-            price_seg += f"min-price-{min_price}-"
-        if max_price:
-            price_seg += f"max-price-{max_price}-"
-        bed_seg = f"{min_beds}-bedrooms/" if min_beds else ""
-        url = f"https://www.apartments.com/{zipcode}/{price_seg}{bed_seg}"
+        url = self._search_url(zipcode)
         local_browser_first = not (Actor.is_at_home() or os.environ.get("APIFY_TOKEN"))
 
         if local_browser_first:
@@ -211,6 +199,29 @@ class ApartmentsComScraper:
             return await self._playwright_search(url, zipcode, session_id=session_id)
 
         return await self._playwright_search(url, zipcode, session_id=session_id)
+
+    def _search_url(self, zipcode: str) -> str:
+        min_price = self.criteria.get("min_price")
+        max_price = self.criteria.get("max_price")
+        min_beds = self.criteria.get("min_bedrooms")
+        max_beds = self.criteria.get("max_bedrooms")
+
+        price_seg = ""
+        if min_price:
+            price_seg += f"min-price-{min_price}-"
+        if max_price:
+            price_seg += f"max-price-{max_price}-"
+
+        # Do not force a narrow bedroom path for open-ended searches like
+        # "1 bedroom and up"; filter those locally from rendered HTML instead.
+        bed_seg = ""
+        if min_beds is not None and max_beds is not None and min_beds == max_beds:
+            if min_beds == 0:
+                bed_seg = "studio/"
+            else:
+                bed_seg = f"{min_beds}-bedrooms/"
+
+        return f"https://www.apartments.com/{zipcode}/{price_seg}{bed_seg}"
 
     async def _playwright_search(self, url: str, zipcode: str, *, session_id: str | None = None) -> list[dict]:
         print(f"[apartments_com] switching to Playwright for {url}")
@@ -378,6 +389,8 @@ class ApartmentsComScraper:
                 listing = self._map_json_ld_listing(node, zipcode)
                 if not listing or not listing.get("url"):
                     continue
+                if not self._matches_criteria(listing):
+                    continue
                 key = listing["url"]
                 if key in seen:
                     continue
@@ -406,6 +419,8 @@ class ApartmentsComScraper:
             try:
                 listing = self._parse_card(card, zipcode)
                 if listing and listing["url"] and listing["url"] not in seen:
+                    if not self._matches_criteria(listing):
+                        continue
                     seen.add(listing["url"])
                     listings.append(listing)
             except Exception:
@@ -566,6 +581,29 @@ class ApartmentsComScraper:
             "image_url": _extract_image_url(item.get("image")),
             "description": description,
         }
+
+    def _matches_criteria(self, listing: dict) -> bool:
+        min_price = self.criteria.get("min_price")
+        max_price = self.criteria.get("max_price")
+        min_beds = self.criteria.get("min_bedrooms")
+        max_beds = self.criteria.get("max_bedrooms")
+        min_baths = self.criteria.get("min_bathrooms")
+
+        price = listing.get("price")
+        beds = listing.get("bedrooms")
+        baths = listing.get("bathrooms")
+
+        if min_price is not None and price is not None and price < min_price:
+            return False
+        if max_price is not None and price is not None and price > max_price:
+            return False
+        if min_beds is not None and beds is not None and beds < min_beds:
+            return False
+        if max_beds is not None and beds is not None and beds > max_beds:
+            return False
+        if min_baths is not None and baths is not None and baths < float(min_baths):
+            return False
+        return True
 
 
 # ---------------------------------------------------------------------------
