@@ -11,7 +11,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-BASE_URL = "https://newyork.craigslist.org/search/aap"
+BASE_URL = "https://newyork.craigslist.org/search/apa"
 
 
 class CraigslistScraper:
@@ -53,7 +53,6 @@ class CraigslistScraper:
         if self.criteria.get("max_bedrooms") is not None:
             base_params["max_bedrooms"] = self.criteria["max_bedrooms"]
         if self.criteria.get("min_bathrooms"):
-            # CL uses: 1, 1.5, 2, 2.5, 3, 3.5, 4
             base_params["bathrooms"] = self.criteria["min_bathrooms"]
         if self.criteria.get("pets_allowed"):
             base_params["pets_cat"] = 1
@@ -63,7 +62,6 @@ class CraigslistScraper:
         if zipcodes:
             return [{**base_params, "postal": z, "search_distance": 1} for z in zipcodes]
         else:
-            # Fall back to neighborhood keyword search
             neighborhoods = self.criteria.get("neighborhoods", [])
             if neighborhoods:
                 return [{**base_params, "query": n} for n in neighborhoods]
@@ -78,11 +76,11 @@ class CraigslistScraper:
         soup = BeautifulSoup(html, "lxml")
         listings = []
 
-        # New CL design uses <li class="cl-search-result">
-        items = soup.select("li.cl-search-result")
+        # Current CL design (2025+): li.cl-static-search-result
+        items = soup.select("li.cl-static-search-result")
         if not items:
-            # Fallback to old design
-            items = soup.select("li.result-row")
+            # Fallback selectors for older designs
+            items = soup.select("li.cl-search-result") or soup.select("li.result-row")
 
         for item in items:
             try:
@@ -95,34 +93,36 @@ class CraigslistScraper:
         return listings
 
     def _parse_item(self, item) -> dict | None:
-        # URL + title
-        link_el = item.select_one("a.posting-title") or item.select_one("a.result-title")
+        link_el = item.find("a")
         if not link_el:
             return None
 
         url = link_el.get("href", "")
+        if not url:
+            return None
         if url and not url.startswith("http"):
             url = "https://newyork.craigslist.org" + url
-        title = link_el.get_text(strip=True)
+
+        # Only keep apartment listings (filter out cars, furniture, etc.)
+        if "/apa/" not in url and "/aap/" not in url:
+            return None
+
+        # Title — try .title div first, then link text
+        title_el = item.select_one(".title") or item.select_one("a.posting-title") or item.select_one("a.result-title")
+        title = title_el.get_text(strip=True) if title_el else link_el.get_text(strip=True)
 
         # Price
-        price_el = item.select_one(".priceinfo") or item.select_one(".result-price")
-        price = None
-        if price_el:
-            price = _parse_price(price_el.get_text())
+        price_el = item.select_one(".price") or item.select_one(".priceinfo") or item.select_one(".result-price")
+        price = _parse_price(price_el.get_text()) if price_el else None
 
-        # Beds/baths from meta
+        # Location
+        loc_el = item.select_one(".location") or item.select_one(".meta .separator + span") or item.select_one(".result-hood")
+        address = loc_el.get_text(strip=True).strip("() ") if loc_el else ""
+
+        # Beds/baths from full text
         meta_text = item.get_text(" ", strip=True)
         bedrooms = _extract_beds(meta_text)
         bathrooms = _extract_baths(meta_text)
-
-        # Location
-        hood_el = item.select_one(".meta .separator + span") or item.select_one(".result-hood")
-        address = hood_el.get_text(strip=True).strip("() ") if hood_el else ""
-
-        # Pets — CL doesn't surface this in search results, needs listing page
-        # We'll mark as unknown; ranker gives partial credit
-        pets_allowed = None
 
         return {
             "url": url,
@@ -134,7 +134,7 @@ class CraigslistScraper:
             "zipcode": None,
             "lat": None,
             "lng": None,
-            "pets_allowed": pets_allowed,
+            "pets_allowed": None,
             "available_date": None,
             "source": "craigslist",
             "image_url": None,
