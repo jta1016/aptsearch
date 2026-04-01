@@ -10,8 +10,9 @@ No browser required — uses httpx only.
 import re
 import json
 import httpx
+from apify import Actor
 from bs4 import BeautifulSoup
-from browser_fetch import fetch_page_html
+from browser_fetch import fetch_page_artifacts
 from proxy_support import get_proxy_url
 
 # Headers that mimic a real Chrome browser.
@@ -193,11 +194,14 @@ class ApartmentsComScraper:
             html = resp.text
         else:
             print(f"[apartments_com] switching to Playwright for {url}")
-            html = await fetch_page_html(
+            artifacts = await fetch_page_artifacts(
                 url,
                 site_name="apartments_com",
                 session_id=session_id,
             )
+            await self._store_browser_artifacts(zipcode, session_id, artifacts)
+            self._log_browser_artifacts(url, artifacts)
+            html = artifacts["html"]
             if self._looks_blocked(html):
                 print(f"[apartments_com] Playwright still received a blocked page for {url}")
 
@@ -237,13 +241,78 @@ class ApartmentsComScraper:
 
     def _looks_blocked(self, html: str) -> bool:
         snippet = (html or "")[:1000].lower()
-        return "access denied" in snippet or "errors.edgesuite.net" in snippet
+        return (
+            "access denied" in snippet
+            or "errors.edgesuite.net" in snippet
+            or "verify you are human" in snippet
+            or "captcha" in snippet
+            or "perimeterx" in snippet
+            or "akamai" in snippet
+        )
 
     def _session_id(self, zipcode: str) -> str:
         min_price = self.criteria.get("min_price") or "na"
         max_price = self.criteria.get("max_price") or "na"
         min_beds = self.criteria.get("min_bedrooms") or "na"
         return f"apts-{zipcode}-{min_price}-{max_price}-{min_beds}"
+
+    async def _store_browser_artifacts(self, zipcode: str, session_id: str | None, artifacts: dict) -> None:
+        if not (Actor.is_at_home() or getattr(Actor, "config", None)):
+            return
+
+        key = f"apartments-com-browser-{session_id or zipcode}"
+        compact_artifacts = {
+            "zipcode": zipcode,
+            "session_id": session_id,
+            "final_url": artifacts.get("final_url"),
+            "title": artifacts.get("title"),
+            "challenge_signals": artifacts.get("challenge_signals") or [],
+            "cookies": [
+                {
+                    "name": cookie.get("name"),
+                    "domain": cookie.get("domain"),
+                    "expires": cookie.get("expires"),
+                }
+                for cookie in artifacts.get("cookies", [])[:20]
+            ],
+            "requests": artifacts.get("requests", [])[:20],
+            "responses": artifacts.get("responses", [])[:20],
+            "html_preview": (artifacts.get("html") or "")[:2000],
+        }
+        try:
+            await Actor.set_value(key, compact_artifacts)
+            print(f"[apartments_com] stored browser artifacts in key-value store: {key}")
+        except Exception as exc:
+            print(f"[apartments_com] failed to store browser artifacts for {zipcode}: {exc}")
+
+    def _log_browser_artifacts(self, url: str, artifacts: dict) -> None:
+        challenge_signals = artifacts.get("challenge_signals") or []
+        print(
+            "[apartments_com] browser summary "
+            f"url={url} final_url={artifacts.get('final_url')} "
+            f"title={artifacts.get('title')!r} "
+            f"challenge_signals={challenge_signals}"
+        )
+
+        interesting_responses = [
+            response
+            for response in artifacts.get("responses", [])
+            if (
+                response.get("resource_type") in {"document", "xhr", "fetch"}
+                or "services/search" in (response.get("url") or "")
+            )
+        ]
+        for response in interesting_responses[:8]:
+            preview = response.get("body_preview")
+            print(
+                "[apartments_com] browser response "
+                f"status={response.get('status')} "
+                f"type={response.get('resource_type')} "
+                f"url={response.get('url')} "
+                f"content_type={response.get('content_type')}"
+            )
+            if preview:
+                print(f"[apartments_com] browser body preview: {preview}")
 
     def _extract_initial_state(self, data: dict, zipcode: str) -> list[dict]:
         items = (
