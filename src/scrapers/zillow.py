@@ -73,7 +73,7 @@ class ZillowScraper:
         try:
             run = await client.actor(ZILLOW_ACTOR_ID).call(
                 run_input={
-                    "startUrls": start_urls,
+                    "searchUrls": start_urls,
                     "maxItems": MAX_ITEMS_PER_RUN,
                 },
                 timeout_secs=300,
