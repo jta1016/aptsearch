@@ -6,6 +6,7 @@ No browser required — uses httpx only.
 import re
 import json
 import httpx
+from browser_fetch import fetch_page_html
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -126,10 +127,19 @@ class ZillowScraper:
 
     async def _fetch(self, client: httpx.AsyncClient, url: str) -> list[dict]:
         resp = await client.get(url)
-        if resp.status_code != 200:
-            print(f"[zillow] HTTP {resp.status_code} for {url}")
+        if resp.status_code == 200:
+            return self._parse(resp.text)
+
+        print(f"[zillow] HTTP {resp.status_code} for {url}")
+        try:
+            html = await fetch_page_html(url)
+            results = self._parse(html)
+            if results:
+                print(f"[zillow] Playwright fallback returned {len(results)} listings for {url}")
+            return results
+        except Exception as e:
+            print(f"[zillow] Playwright fallback failed for {url}: {e}")
             return []
-        return self._parse(resp.text)
 
     def _parse(self, html: str) -> list[dict]:
         m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)

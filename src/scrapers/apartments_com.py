@@ -11,6 +11,7 @@ import re
 import json
 import httpx
 from bs4 import BeautifulSoup
+from browser_fetch import fetch_page_html
 
 # Headers that mimic a real Chrome browser.
 _HTML_HEADERS = {
@@ -174,10 +175,11 @@ class ApartmentsComScraper:
 
         resp = await client.get(url, headers=_HTML_HEADERS)
         print(f"[apartments_com] page GET HTTP {resp.status_code} for {url}")
-        if resp.status_code != 200:
-            raise Exception(f"HTTP {resp.status_code}")
-
-        html = resp.text
+        if resp.status_code == 200:
+            html = resp.text
+        else:
+            print(f"[apartments_com] switching to Playwright for {url}")
+            html = await fetch_page_html(url)
 
         # Try several embedded-JSON patterns.
         for pattern, extractor in [

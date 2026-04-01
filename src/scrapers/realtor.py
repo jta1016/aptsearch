@@ -8,6 +8,7 @@ No browser required — uses httpx only.
 import re
 import json
 import httpx
+from browser_fetch import fetch_page_html
 
 _GRAPHQL_URL = "https://graph.realtor.com/graphql"
 
@@ -201,10 +202,12 @@ class RealtorScraper:
         url = f"https://www.realtor.com/apartments/{zipcode}"
         resp = await client.get(url, headers=_HTML_HEADERS)
         print(f"[realtor] page GET HTTP {resp.status_code} for {url}")
-        if resp.status_code != 200:
-            raise Exception(f"HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            return self._parse_next_data(resp.text, zipcode)
 
-        return self._parse_next_data(resp.text, zipcode)
+        print(f"[realtor] switching to Playwright for {url}")
+        html = await fetch_page_html(url)
+        return self._parse_next_data(html, zipcode)
 
     def _parse_next_data(self, html: str, zipcode: str) -> list[dict]:
         m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
