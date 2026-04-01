@@ -883,7 +883,8 @@
     cancelScheduleEdit();
     loadPrefs();
     loadSchedules();
-    loadLatestResults();
+    renderResults([]);
+    setRunStatus('idle', 'Ready');
     handleLinkActions();
     openTabFromHash();
   }
