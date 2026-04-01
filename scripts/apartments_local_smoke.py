@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import os
@@ -10,7 +11,7 @@ from browser_fetch import fetch_page_artifacts
 from scrapers.apartments_com import ApartmentsComScraper
 
 
-CRITERIA = {
+DEFAULT_CRITERIA = {
     "zipcodes": ["11101"],
     "min_price": 3500,
     "max_price": 6000,
@@ -21,9 +22,28 @@ CRITERIA = {
 
 
 async def main() -> None:
-    scraper = ApartmentsComScraper(CRITERIA)
-    zipcode = CRITERIA["zipcodes"][0]
-    url = scraper._search_url(zipcode)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--zipcode")
+    parser.add_argument("--url")
+    parser.add_argument("--min-price", type=int, default=DEFAULT_CRITERIA["min_price"])
+    parser.add_argument("--max-price", type=int, default=DEFAULT_CRITERIA["max_price"])
+    parser.add_argument("--min-beds", type=int, default=DEFAULT_CRITERIA["min_bedrooms"])
+    parser.add_argument("--max-beds", type=int, default=DEFAULT_CRITERIA["max_bedrooms"])
+    parser.add_argument("--min-baths", type=float, default=DEFAULT_CRITERIA["min_bathrooms"])
+    args = parser.parse_args()
+
+    criteria = {
+        "zipcodes": [args.zipcode] if args.zipcode else list(DEFAULT_CRITERIA["zipcodes"]),
+        "min_price": args.min_price,
+        "max_price": args.max_price,
+        "min_bedrooms": args.min_beds,
+        "max_bedrooms": args.max_beds,
+        "min_bathrooms": args.min_baths,
+    }
+
+    scraper = ApartmentsComScraper(criteria)
+    zipcode = criteria["zipcodes"][0]
+    url = args.url or scraper._search_url(zipcode)
 
     print(f"URL: {url}")
     artifacts = await fetch_page_artifacts(
