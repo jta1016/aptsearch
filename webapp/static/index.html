@@ -229,6 +229,18 @@
       align-items: center;
     }
 
+    .mobile-only { display: none !important; }
+    .desktop-only { display: inline-flex !important; }
+
+    .sidebar-search {
+      width: 100%;
+      margin-bottom: 16px;
+      justify-content: center;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     #save-status {
       text-align: center;
       font-size: 12px;
@@ -400,6 +412,8 @@
       .tab { padding: 6px 10px; font-size: 11px; }
 
       #run-btn { min-height: 44px; padding: 10px 14px; }
+      .mobile-only { display: inline-flex !important; }
+      .desktop-only { display: none !important; }
 
       /* Layout: stack sidebar above main */
       .layout { flex-direction: column; }
@@ -546,7 +560,7 @@
         <button class="tab active" onclick="switchTab('results', this)">Results</button>
         <button class="tab" onclick="switchTab('settings', this)">Saved Searches</button>
       </div>
-      <button id="run-btn" onclick="runNow()">
+      <button id="run-btn" class="mobile-only" onclick="runNow()">
         <span id="run-label">Search</span>
       </button>
     </div>
@@ -558,9 +572,12 @@
     <!-- Sidebar -->
     <aside id="sidebar">
       <h2>Search Criteria</h2>
+      <button id="sidebar-run-btn" class="btn btn-primary sidebar-search desktop-only" type="button" onclick="runNow()">
+        <span id="sidebar-run-label">Search</span>
+      </button>
       <div class="filter-actions top">
         <button class="btn" type="button" onclick="clearFilters()">Clear Filters</button>
-        <button class="btn" type="button" onclick="closeFilters()">Close Filters</button>
+        <button class="btn mobile-only" type="button" onclick="closeFilters()">Close Filters</button>
       </div>
 
       <div class="field">
@@ -652,7 +669,7 @@
       <hr class="divider" />
       <div class="filter-actions bottom">
         <button class="btn" type="button" onclick="clearFilters()">Clear Filters</button>
-        <button class="btn" type="button" onclick="closeFilters()">Close Filters</button>
+        <button class="btn mobile-only" type="button" onclick="closeFilters()">Close Filters</button>
       </div>
       <div id="save-status"></div>
     </aside>
@@ -1111,8 +1128,7 @@
     };
 
     setRunStatus('running', 'Running…');
-    document.getElementById('run-btn').disabled = true;
-    document.getElementById('run-label').innerHTML = '<span class="spinner"></span>';
+    setSearchButtonsLoading(true);
 
     let r;
     try {
@@ -1157,8 +1173,23 @@
   }
 
   function resetRunBtn() {
-    document.getElementById('run-btn').disabled = false;
-    document.getElementById('run-label').textContent = 'Search';
+    setSearchButtonsLoading(false);
+  }
+
+  function setSearchButtonsLoading(isLoading) {
+    const buttons = [
+      { btn: document.getElementById('run-btn'), label: document.getElementById('run-label') },
+      { btn: document.getElementById('sidebar-run-btn'), label: document.getElementById('sidebar-run-label') },
+    ];
+    buttons.forEach(({ btn, label }) => {
+      if (!btn || !label) return;
+      btn.disabled = isLoading;
+      if (isLoading) {
+        label.innerHTML = '<span class="spinner"></span>';
+      } else {
+        label.textContent = 'Search';
+      }
+    });
   }
 
   // ── Results ─────────────────────────────────────────────────────────────────

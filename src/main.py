@@ -23,6 +23,15 @@ SCRAPER_MAP = {
 }
 
 
+def make_safe_store_key(prefix: str, raw_value: str) -> str:
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!-_.'()")
+    cleaned = "".join(ch if ch in allowed else "-" for ch in (raw_value or "default"))
+    while "--" in cleaned:
+        cleaned = cleaned.replace("--", "-")
+    cleaned = cleaned.strip("-") or "default"
+    return f"{prefix}{cleaned[:220]}"
+
+
 async def main():
     async with Actor:
         inp = await Actor.get_input() or {}
@@ -140,7 +149,7 @@ def normalize_recipients(inp: dict) -> list[str]:
 
 
 async def prioritize_new_listings(digest_id: str, listings: list[dict]) -> tuple[list[dict], int]:
-    seen_key = f"seen-{digest_id}"
+    seen_key = make_safe_store_key("seen-", digest_id)
     seen_record = await Actor.get_value(seen_key) or {}
     seen_urls = set(seen_record.get("urls") or [])
     fresh: list[dict] = []
@@ -158,7 +167,7 @@ async def prioritize_new_listings(digest_id: str, listings: list[dict]) -> tuple
 
 
 async def remember_seen_listings(digest_id: str, listings: list[dict]) -> None:
-    seen_key = f"seen-{digest_id}"
+    seen_key = make_safe_store_key("seen-", digest_id)
     seen_record = await Actor.get_value(seen_key) or {}
     existing = list(seen_record.get("urls") or [])
     merged = []
