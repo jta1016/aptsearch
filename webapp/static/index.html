@@ -822,7 +822,7 @@
     const r = await apifyFetch(`/acts/${ACTOR_ID}/runs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input }),
+      body: JSON.stringify(input),
     });
 
     if (!r.ok) { setRunStatus('error', 'Error'); resetRunBtn(); return; }
