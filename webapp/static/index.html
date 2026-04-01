@@ -336,15 +336,13 @@
     .empty-state p { margin-top: 8px; font-size: 13px; }
 
     /* ── Email settings ── */
-    .settings-section { max-width: 480px; }
+    .settings-section { max-width: 560px; }
     .settings-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
     .settings-section p { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
     .settings-row { display: flex; gap: 10px; align-items: flex-end; }
     .settings-row .field { flex: 1; }
     .settings-row button { padding: 7px 16px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; cursor: pointer; white-space: nowrap; }
     .settings-row button:hover { border-color: var(--accent); color: var(--accent); }
-
-    .info-box { background: var(--tag-bg); border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #1e40af; margin-top: 16px; line-height: 1.6; }
 
     /* ── Schedule section ── */
     .schedule-item {
@@ -369,6 +367,13 @@
       border-radius: 10px;
       padding: 14px;
       margin-top: 12px;
+    }
+    .saved-search-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
     }
     .inline-helper {
       font-size: 12px;
@@ -544,7 +549,7 @@
   <div class="setup-card">
     <div style="font-size:48px;margin-bottom:16px">🏠</div>
     <h1>Apt Search</h1>
-    <p>Enter your account email to load your saved filters and scheduled searches.</p>
+    <p>Enter your account email to load your saved filters and saved searches.</p>
     <input type="email" id="email-input" placeholder="you@gmail.com" onkeydown="if(event.key==='Enter')saveEmail()" />
     <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="saveEmail()">Continue</button>
     <div id="token-error" style="color:#dc2626;font-size:12px;margin-top:8px"></div>
@@ -575,6 +580,7 @@
       <button id="sidebar-run-btn" class="btn btn-primary sidebar-search desktop-only" type="button" onclick="runNow()">
         <span id="sidebar-run-label">Search</span>
       </button>
+      <button id="sidebar-save-btn" class="btn desktop-only" type="button" onclick="openSaveSearch()">Save Search</button>
       <div class="filter-actions top">
         <button class="btn" type="button" onclick="clearFilters()">Clear Filters</button>
         <button class="btn mobile-only" type="button" onclick="closeFilters()">Close Filters</button>
@@ -669,6 +675,10 @@
 
       <hr class="divider" />
       <div class="filter-actions bottom">
+        <button id="sidebar-run-btn-bottom" class="btn btn-primary" type="button" onclick="runNow()">
+          <span id="sidebar-run-label-bottom">Search</span>
+        </button>
+        <button class="btn" type="button" onclick="openSaveSearch()">Save Search</button>
         <button class="btn" type="button" onclick="clearFilters()">Clear Filters</button>
         <button class="btn mobile-only" type="button" onclick="closeFilters()">Close Filters</button>
       </div>
@@ -690,7 +700,7 @@
       <div id="tab-settings" class="tab-panel">
         <div class="settings-section">
           <h3>Daily Report Email</h3>
-          <p>Choose the default email address for digest emails. Saved searches can run without email, and only the ones you turn on for digest delivery will send mail.</p>
+          <p>Default address for digest emails.</p>
           <div class="settings-row">
             <div class="field">
               <label>Default Report Email</label>
@@ -705,14 +715,14 @@
           <p>Signed in as <strong id="current-email-display"></strong></p>
           <button class="btn" onclick="resetEmail()">Switch Account</button>
 
-          <div class="info-box" style="margin-top:16px">
-            A saved search stores the filters currently shown in the sidebar. Email is optional for each saved search. For the cleanest inbox, the goal is usually one daily digest with new listings first, plus extra saved searches only when you really want them.
-          </div>
-
           <hr class="divider" style="margin-top:24px" />
 
-          <h3>Scheduled Searches</h3>
-          <p>Add a saved search from the current filters, then review, edit, or delete existing ones here.</p>
+          <h3>Saved Searches</h3>
+          <p>Save the current filters, then search, edit, or delete searches here.</p>
+
+          <div class="saved-search-toolbar">
+            <button class="btn btn-primary" type="button" onclick="openSaveSearch()">Save Current Search</button>
+          </div>
 
           <div id="sched-editor" class="schedule-form-card">
             <div class="field">
@@ -721,76 +731,77 @@
             </div>
 
             <div class="field">
-              <label>Frequency</label>
-              <select id="sched-freq" onchange="toggleScheduleDay()">
+              <label>Schedule</label>
+              <select id="sched-freq" onchange="toggleScheduleOptions()">
+                <option value="manual">Save only</option>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
               </select>
             </div>
 
-            <div class="field" id="sched-day-wrap" style="display:none">
-              <label>Day</label>
-              <select id="sched-day">
-                <option value="MON">Monday</option>
-                <option value="TUE">Tuesday</option>
-                <option value="WED">Wednesday</option>
-                <option value="THU">Thursday</option>
-                <option value="FRI">Friday</option>
-                <option value="SAT">Saturday</option>
-                <option value="SUN">Sunday</option>
-              </select>
-            </div>
-
-            <div class="field-row">
-              <div class="field">
-                <label>Hour</label>
-                <select id="sched-hour"></select>
+            <div id="sched-timing-fields">
+              <div class="field" id="sched-day-wrap" style="display:none">
+                <label>Day</label>
+                <select id="sched-day">
+                  <option value="MON">Monday</option>
+                  <option value="TUE">Tuesday</option>
+                  <option value="WED">Wednesday</option>
+                  <option value="THU">Thursday</option>
+                  <option value="FRI">Friday</option>
+                  <option value="SAT">Saturday</option>
+                  <option value="SUN">Sunday</option>
+                </select>
               </div>
+
+              <div class="field-row">
+                <div class="field">
+                  <label>Hour</label>
+                  <select id="sched-hour"></select>
+                </div>
+                <div class="field">
+                  <label>Minute</label>
+                  <select id="sched-minute">
+                    <option value="0">:00</option>
+                    <option value="15">:15</option>
+                    <option value="30">:30</option>
+                    <option value="45">:45</option>
+                  </select>
+                </div>
+              </div>
+
               <div class="field">
-                <label>Minute</label>
-                <select id="sched-minute">
-                  <option value="0">:00</option>
-                  <option value="15">:15</option>
-                  <option value="30">:30</option>
-                  <option value="45">:45</option>
+                <label>Timezone</label>
+                <select id="sched-tz">
+                  <option value="America/New_York">Eastern (ET)</option>
+                  <option value="America/Chicago" selected>Central (CT)</option>
+                  <option value="America/Denver">Mountain (MT)</option>
+                  <option value="America/Los_Angeles">Pacific (PT)</option>
+                  <option value="America/Phoenix">Arizona (no DST)</option>
+                  <option value="America/Anchorage">Alaska (AKT)</option>
+                  <option value="Pacific/Honolulu">Hawaii (HST)</option>
+                  <option value="Europe/London">London (GMT/BST)</option>
+                  <option value="Europe/Paris">Paris (CET/CEST)</option>
+                  <option value="UTC">UTC</option>
                 </select>
               </div>
             </div>
 
             <div class="field">
-              <label>Timezone</label>
-              <select id="sched-tz">
-                <option value="America/New_York">Eastern (ET)</option>
-                <option value="America/Chicago" selected>Central (CT)</option>
-                <option value="America/Denver">Mountain (MT)</option>
-                <option value="America/Los_Angeles">Pacific (PT)</option>
-                <option value="America/Phoenix">Arizona (no DST)</option>
-                <option value="America/Anchorage">Alaska (AKT)</option>
-                <option value="Pacific/Honolulu">Hawaii (HST)</option>
-                <option value="Europe/London">London (GMT/BST)</option>
-                <option value="Europe/Paris">Paris (CET/CEST)</option>
-                <option value="UTC">UTC</option>
-              </select>
-            </div>
-
-            <div class="field">
               <label>Email Delivery</label>
               <select id="sched-email-mode" onchange="toggleScheduleEmailOptions()">
-                <option value="digest">Send to daily digest</option>
-                <option value="none">Save search only</option>
+                <option value="digest">Send digest email</option>
+                <option value="none">No email</option>
               </select>
-              <div class="inline-helper">Only searches set to digest delivery will send email.</div>
             </div>
 
             <div class="field" id="sched-email-options">
               <label>Extra Recipients</label>
               <input type="text" id="sched-extra-emails" placeholder="Optional, comma separated" />
-              <div class="inline-helper">These are added to the default report email for this digest.</div>
             </div>
 
             <div class="settings-row" style="margin-top:12px">
               <button class="btn" type="button" onclick="cancelScheduleEdit()">Cancel</button>
-              <button class="btn btn-primary" type="button" onclick="saveSchedule()" id="schedule-submit-btn">Add Scheduled Search</button>
+              <button class="btn btn-primary" type="button" onclick="saveSchedule()" id="schedule-submit-btn">Save Search</button>
             </div>
           </div>
 
@@ -805,6 +816,7 @@
   const ACTOR_ID = 'jta93~aptsearch';
   const PREFS_STORE = '~apt-search-prefs';
   const SCHEDULE_MARKER = 'APTSEARCH_V1';
+  const SAVED_SEARCHES_PREFIX = 'saved-searches-';
   const DEFAULT_PREFS = {
     email: '',
     zipcodes: [],
@@ -840,6 +852,7 @@
   let saveStatusTimer = null;
   let autoSaveTimer = null;
   let scheduleEditId = null;
+  let savedSearchEditId = null;
   let apifyUserId = null;
 
   // All Apify calls go through our server-side proxy so the token stays secret
@@ -896,7 +909,7 @@
     document.getElementById('email-input').value = userEmail;
     initSchedHours();
     bindAutoSave();
-    toggleScheduleDay();
+    toggleScheduleOptions();
     toggleScheduleEmailOptions();
     cancelScheduleEdit();
     loadPrefs();
@@ -1129,7 +1142,7 @@
       manage_url: getManageUrl(),
     };
 
-    setRunStatus('running', 'Running…');
+    setRunStatus('running', 'Searching…');
     setSearchButtonsLoading(true);
 
     let r;
@@ -1182,6 +1195,7 @@
     const buttons = [
       { btn: document.getElementById('run-btn'), label: document.getElementById('run-label') },
       { btn: document.getElementById('sidebar-run-btn'), label: document.getElementById('sidebar-run-label') },
+      { btn: document.getElementById('sidebar-run-btn-bottom'), label: document.getElementById('sidebar-run-label-bottom') },
     ];
     buttons.forEach(({ btn, label }) => {
       if (!btn || !label) return;
@@ -1201,7 +1215,7 @@
       if (!r.ok) { renderResults([]); return; }
       const { data } = await r.json();
       if (data.status === 'RUNNING') {
-        setRunStatus('running', 'Running…');
+        setRunStatus('running', 'Searching…');
         pollingInterval = setInterval(() => pollRun(data.id), 4000);
       } else if (data.status === 'SUCCEEDED') {
         setRunStatus('done', 'Done');
@@ -1228,6 +1242,15 @@
     cards.innerHTML = items.map(cardHTML).join('');
   }
 
+  function formatDateLabel(value) {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString();
+    }
+    return String(value);
+  }
+
   function cardHTML(item) {
     const price = item.price ? `$${item.price.toLocaleString()}/mo` : 'Price N/A';
     const meta = [item.bedrooms != null ? (item.bedrooms === 0 ? 'Studio' : `${item.bedrooms} bd`) : null, item.bathrooms != null ? `${item.bathrooms} ba` : null].filter(Boolean).join(' · ');
@@ -1235,7 +1258,8 @@
     const img = item.image_url ? `<img class="card-img" src="${item.image_url}" loading="lazy" onerror="this.style.display='none'" />`  : `<div class="card-img-placeholder">🏠</div>`;
     const subway = item.nearest_subway ? `<span class="badge badge-subway">🚇 ${item.nearest_subway} (${item.subway_distance_miles?.toFixed(2)} mi)</span>` : '';
     const pets = item.pets_allowed === true ? `<span class="badge badge-pets">🐾 Pets OK</span>` : '';
-    return `<div class="card">${img}<div class="card-body"><div class="card-top"><div class="card-price">${price}</div><div class="card-rank">#${item.rank}</div></div><div class="card-meta">${meta || '—'}</div><div class="card-address" title="${item.address||''}">${item.address || item.title || '—'}</div><div class="card-tags"><span class="badge badge-source">${sourceLabel[item.source]||item.source}</span>${pets}${subway}</div><a class="card-link" href="${item.url}" target="_blank" rel="noopener">View Listing →</a></div></div>`;
+    const listed = item.date_listed ? `<div class="card-meta">Listed ${formatDateLabel(item.date_listed)}</div>` : '';
+    return `<div class="card">${img}<div class="card-body"><div class="card-top"><div class="card-price">${price}</div><div class="card-rank">#${item.rank}</div></div><div class="card-meta">${meta || '—'}</div>${listed}<div class="card-address" title="${item.address||''}">${item.address || item.title || '—'}</div><div class="card-tags"><span class="badge badge-source">${sourceLabel[item.source]||item.source}</span>${pets}${subway}</div><a class="card-link" href="${item.url}" target="_blank" rel="noopener">View Listing →</a></div></div>`;
   }
 
   // ── Scheduling ───────────────────────────────────────────────────────────────
@@ -1256,9 +1280,17 @@
     document.getElementById('sched-day-wrap').style.display = isWeekly ? 'block' : 'none';
   }
 
+  function toggleScheduleOptions() {
+    const isManual = document.getElementById('sched-freq').value === 'manual';
+    document.getElementById('sched-timing-fields').style.display = isManual ? 'none' : 'block';
+    toggleScheduleDay();
+    toggleScheduleEmailOptions();
+  }
+
   function toggleScheduleEmailOptions() {
     const mode = document.getElementById('sched-email-mode').value;
-    document.getElementById('sched-email-options').style.display = mode === 'none' ? 'none' : 'block';
+    const isManual = document.getElementById('sched-freq').value === 'manual';
+    document.getElementById('sched-email-options').style.display = mode === 'none' || isManual ? 'none' : 'block';
   }
 
   function parseEmailList(value) {
@@ -1292,6 +1324,29 @@
     return `${minute} ${hour} * * *`;
   }
 
+  function savedSearchesKey() {
+    return `${SAVED_SEARCHES_PREFIX}${userEmail}`;
+  }
+
+  async function loadSavedSearchRecords() {
+    try {
+      const r = await apifyFetch(`/key-value-stores/${PREFS_STORE}/records/${encodeURIComponent(savedSearchesKey())}`);
+      if (!r.ok) return [];
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function saveSavedSearchRecords(records) {
+    await apifyFetch(`/key-value-stores/${PREFS_STORE}/records/${encodeURIComponent(savedSearchesKey())}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(records),
+    });
+  }
+
   function parseScheduleTiming(cronExpression, fallbackFrequency) {
     const parts = (cronExpression || '').trim().split(/\s+/);
     if (parts.length < 5) {
@@ -1306,7 +1361,7 @@
     };
   }
 
-  function buildSchedulePayload(userId) {
+  function buildSchedulePayload(userId, savedSearchId) {
     const prefs = buildPrefs();
     const freq = document.getElementById('sched-freq').value;
     const hour = parseInt(document.getElementById('sched-hour').value, 10);
@@ -1315,7 +1370,7 @@
     const day = document.getElementById('sched-day').value;
     const emailMode = document.getElementById('sched-email-mode').value;
     const extraRecipients = parseEmailList(document.getElementById('sched-extra-emails').value.trim());
-    const scheduleKey = `apt-search-${scheduleEditId || Date.now()}`;
+    const scheduleKey = savedSearchId;
     const recipients = emailMode === 'none'
       ? []
       : parseEmailList([prefs.email || userEmail, ...extraRecipients].join(','));
@@ -1343,6 +1398,7 @@
       isExclusive: true,
       description: JSON.stringify({
         marker: SCHEDULE_MARKER,
+        savedSearchId,
         ownerEmail: userEmail,
         frequency: freq,
         day: freq === 'weekly' ? day : null,
@@ -1369,134 +1425,235 @@
     return { meta, input };
   }
 
+  function normalizeSavedSearchRecord(record) {
+    return {
+      id: record.id || `saved-search-${Date.now()}`,
+      title: record.title || 'Saved search',
+      prefs: record.prefs || {},
+      frequency: record.frequency || 'manual',
+      day: record.day || 'MON',
+      hour: String(record.hour ?? '8'),
+      minute: String(record.minute ?? '0'),
+      timezone: record.timezone || 'America/Chicago',
+      emailMode: record.emailMode || 'digest',
+      extraRecipients: record.extraRecipients || [],
+      scheduleId: record.scheduleId || null,
+      nextSearchAt: record.nextSearchAt || null,
+      updatedAt: record.updatedAt || new Date().toISOString(),
+    };
+  }
+
+  function scheduleToSavedSearch(schedule) {
+    const { meta, input } = parseScheduleRecord(schedule);
+    const timing = parseScheduleTiming(schedule.cronExpression, meta.frequency);
+    return normalizeSavedSearchRecord({
+      id: meta.savedSearchId || schedule.name || schedule.id,
+      title: schedule.title || 'Saved search',
+      prefs: input,
+      frequency: timing.frequency,
+      day: timing.day,
+      hour: timing.hour,
+      minute: timing.minute,
+      timezone: schedule.timezone || 'America/Chicago',
+      emailMode: meta.emailMode || ((input.email || input.emails?.length) ? 'digest' : 'none'),
+      extraRecipients: meta.extraRecipients || [],
+      scheduleId: schedule.id,
+      nextSearchAt: schedule.nextRunAt || null,
+      updatedAt: schedule.modifiedAt || schedule.createdAt || null,
+    });
+  }
+
   async function saveSchedule() {
     flushTagInputs();
     await savePrefs();
-    const isEditing = Boolean(scheduleEditId);
-    let userId;
-    try {
-      userId = await getApifyUserId();
-    } catch {
-      showSaveStatus('Could not load schedule account');
-      return;
+    const isEditing = Boolean(savedSearchEditId);
+    const prefs = buildPrefs();
+    const frequency = document.getElementById('sched-freq').value;
+    const savedSearchId = savedSearchEditId || `saved-search-${Date.now()}`;
+    let scheduleId = scheduleEditId;
+
+    if (frequency === 'manual') {
+      if (scheduleId) {
+        const deleteResp = await apifyFetch(`/schedules/${scheduleId}`, { method: 'DELETE' });
+        if (!deleteResp.ok) {
+          showSaveStatus('Could not save search');
+          return;
+        }
+      }
+      scheduleId = null;
+    } else {
+      let userId;
+      try {
+        userId = await getApifyUserId();
+      } catch {
+        showSaveStatus('Could not load schedule account');
+        return;
+      }
+      const payload = buildSchedulePayload(userId, savedSearchId);
+      const path = scheduleEditId ? `/schedules/${scheduleEditId}` : '/schedules';
+      const method = scheduleEditId ? 'PUT' : 'POST';
+      const r = await apifyFetch(path, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        showSaveStatus('Could not save search');
+        return;
+      }
+      const body = await r.json().catch(() => ({}));
+      scheduleId = body?.data?.id || scheduleId;
     }
-    const payload = buildSchedulePayload(userId);
-    const path = scheduleEditId ? `/schedules/${scheduleEditId}` : '/schedules';
-    const method = scheduleEditId ? 'PUT' : 'POST';
-    const r = await apifyFetch(path, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+
+    const records = await loadSavedSearchRecords();
+    const nextRecord = normalizeSavedSearchRecord({
+      id: savedSearchId,
+      title: document.getElementById('sched-name').value.trim() || getDefaultScheduleName(prefs),
+      prefs,
+      frequency,
+      day: document.getElementById('sched-day').value,
+      hour: document.getElementById('sched-hour').value,
+      minute: document.getElementById('sched-minute').value,
+      timezone: document.getElementById('sched-tz').value,
+      emailMode: document.getElementById('sched-email-mode').value,
+      extraRecipients: parseEmailList(document.getElementById('sched-extra-emails').value.trim()),
+      scheduleId,
+      updatedAt: new Date().toISOString(),
     });
-    if (!r.ok) {
-      showSaveStatus('Could not save scheduled search');
-      return;
-    }
+    await saveSavedSearchRecords([...records.filter(record => record.id !== savedSearchId), nextRecord]);
+
     cancelScheduleEdit();
-    showSaveStatus(isEditing ? 'Scheduled search updated' : 'Scheduled search added');
+    showSaveStatus(isEditing ? 'Saved search updated' : 'Saved search added');
     await loadSchedules();
   }
 
   async function deleteSchedule(id) {
-    const r = await apifyFetch(`/schedules/${id}`, { method: 'DELETE' });
-    if (!r.ok) {
-      showSaveStatus('Could not delete scheduled search');
-      return;
+    const records = await loadSavedSearchRecords();
+    const target = records.find(record => record.id === id);
+    let scheduleId = target?.scheduleId || null;
+    if (!scheduleId) {
+      const remote = await apifyFetch('/schedules?limit=100&desc=1');
+      if (remote.ok) {
+        const { data } = await remote.json();
+        const match = (data.items || []).find(schedule => {
+          const { meta } = parseScheduleRecord(schedule);
+          return meta.marker === SCHEDULE_MARKER && meta.ownerEmail === userEmail && (meta.savedSearchId === id || schedule.name === id || schedule.id === id);
+        });
+        if (match) scheduleId = match.id;
+      }
     }
+    if (scheduleId) {
+      const r = await apifyFetch(`/schedules/${scheduleId}`, { method: 'DELETE' });
+      if (!r.ok) {
+        showSaveStatus('Could not delete saved search');
+        return;
+      }
+    }
+    await saveSavedSearchRecords(records.filter(record => record.id !== id));
     await loadSchedules();
   }
 
-  function loadScheduleIntoEditor(schedule) {
-    const { meta, input } = parseScheduleRecord(schedule);
-    const timing = parseScheduleTiming(schedule.cronExpression, meta.frequency);
-    scheduleEditId = schedule.id;
-    applyPrefs(input);
-    document.getElementById('sched-name').value = schedule.title || '';
-    document.getElementById('sched-freq').value = timing.frequency;
-    document.getElementById('sched-day').value = timing.day;
-    document.getElementById('sched-hour').value = timing.hour;
-    document.getElementById('sched-minute').value = timing.minute;
-    document.getElementById('sched-tz').value = schedule.timezone || 'America/Chicago';
-    document.getElementById('sched-email-mode').value = meta.emailMode || ((input.email || input.emails?.length) ? 'digest' : 'none');
-    document.getElementById('sched-extra-emails').value = (meta.extraRecipients || []).join(', ');
-    document.getElementById('schedule-submit-btn').textContent = 'Update Scheduled Search';
-    toggleScheduleDay();
-    toggleScheduleEmailOptions();
+  function loadScheduleIntoEditor(record) {
+    const saved = normalizeSavedSearchRecord(record);
+    savedSearchEditId = saved.id;
+    scheduleEditId = saved.scheduleId;
+    applyPrefs(saved.prefs);
+    document.getElementById('sched-name').value = saved.title || '';
+    document.getElementById('sched-freq').value = saved.frequency;
+    document.getElementById('sched-day').value = saved.day;
+    document.getElementById('sched-hour').value = saved.hour;
+    document.getElementById('sched-minute').value = saved.minute;
+    document.getElementById('sched-tz').value = saved.timezone || 'America/Chicago';
+    document.getElementById('sched-email-mode').value = saved.emailMode;
+    document.getElementById('sched-extra-emails').value = (saved.extraRecipients || []).join(', ');
+    document.getElementById('schedule-submit-btn').textContent = 'Update Search';
+    toggleScheduleOptions();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function cancelScheduleEdit() {
+    savedSearchEditId = null;
     scheduleEditId = null;
     document.getElementById('sched-name').value = '';
-    document.getElementById('sched-freq').value = 'daily';
+    document.getElementById('sched-freq').value = 'manual';
     document.getElementById('sched-day').value = 'MON';
     document.getElementById('sched-hour').value = '8';
     document.getElementById('sched-minute').value = '0';
     document.getElementById('sched-tz').value = 'America/Chicago';
     document.getElementById('sched-email-mode').value = 'digest';
     document.getElementById('sched-extra-emails').value = '';
-    document.getElementById('schedule-submit-btn').textContent = 'Add Scheduled Search';
-    toggleScheduleDay();
-    toggleScheduleEmailOptions();
+    document.getElementById('schedule-submit-btn').textContent = 'Save Search';
+    toggleScheduleOptions();
   }
 
-  function describeSchedule(schedule, input, meta) {
+  function describeSchedule(record) {
+    const saved = normalizeSavedSearchRecord(record);
+    const input = saved.prefs || {};
     const areas = [...(input.neighborhoods || []), ...(input.zipcodes || [])];
     const areaLabel = areas.length ? areas.slice(0, 3).join(', ') + (areas.length > 3 ? '…' : '') : 'All areas';
     const siteCount = (input.sites || []).length;
-    const extra = meta.extraRecipients?.length ? ` + ${meta.extraRecipients.length} extra recipient${meta.extraRecipients.length === 1 ? '' : 's'}` : '';
-    const nextRun = schedule.nextRunAt ? new Date(schedule.nextRunAt).toLocaleString() : 'Not scheduled yet';
+    const extra = saved.extraRecipients?.length ? ` + ${saved.extraRecipients.length} extra recipient${saved.extraRecipients.length === 1 ? '' : 's'}` : '';
+    const nextSearch = saved.nextSearchAt ? new Date(saved.nextSearchAt).toLocaleString() : 'Not scheduled';
     return {
       summary: `${areaLabel} · ${siteCount} site${siteCount === 1 ? '' : 's'}${extra}`,
-      nextRun,
-      defaultEmail: input.email || userEmail,
-      emailMode: meta.emailMode || ((input.email || input.emails?.length) ? 'digest' : 'none'),
+      nextSearch,
+      delivery: saved.frequency === 'manual'
+        ? 'Manual only'
+        : `${saved.frequency === 'weekly' ? 'Weekly' : 'Daily'}${saved.emailMode === 'none' ? ' search, no email' : ` digest to ${input.email || userEmail}${saved.extraRecipients?.length ? `, ${saved.extraRecipients.join(', ')}` : ''}`}`,
     };
   }
 
   async function loadSchedules() {
     const container = document.getElementById('saved-schedules');
     if (!container) return;
-    container.innerHTML = '<div class="empty-state" style="padding:24px 0"><p>Loading scheduled searches...</p></div>';
+    container.innerHTML = '<div class="empty-state" style="padding:24px 0"><p>Loading saved searches...</p></div>';
 
+    const savedRecords = await loadSavedSearchRecords();
     let r;
     try {
       r = await apifyFetch('/schedules?limit=100&desc=1');
     } catch {
-      container.innerHTML = '<div class="empty-state" style="padding:24px 0"><p>Could not load scheduled searches.</p></div>';
-      return;
-    }
-    if (!r.ok) {
-      container.innerHTML = '<div class="empty-state" style="padding:24px 0"><p>Could not load scheduled searches.</p></div>';
-      return;
+      r = null;
     }
 
-    const { data } = await r.json();
-    const schedules = (data.items || []).filter(schedule => {
-      const { meta, input } = parseScheduleRecord(schedule);
-      return meta.marker === SCHEDULE_MARKER && meta.ownerEmail === userEmail;
+    let remoteSchedules = [];
+    if (r && r.ok) {
+      const { data } = await r.json();
+      remoteSchedules = (data.items || []).filter(schedule => {
+        const { meta } = parseScheduleRecord(schedule);
+        return meta.marker === SCHEDULE_MARKER && meta.ownerEmail === userEmail;
+      });
+    }
+
+    const byId = new Map(savedRecords.map(record => [record.id, normalizeSavedSearchRecord(record)]));
+    remoteSchedules.forEach(schedule => {
+      const saved = scheduleToSavedSearch(schedule);
+      const existing = byId.get(saved.id);
+      byId.set(saved.id, normalizeSavedSearchRecord({ ...existing, ...saved, prefs: saved.prefs || existing?.prefs || {} }));
     });
 
-    if (!schedules.length) {
-      container.innerHTML = '<div class="empty-state" style="padding:24px 0"><p>No scheduled searches yet.</p></div>';
+    const searches = [...byId.values()].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+    if (!searches.length) {
+      container.innerHTML = '<div class="empty-state" style="padding:24px 0"><p>No saved searches yet.</p></div>';
       return;
     }
 
     container.innerHTML = `
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px">Existing Scheduled Searches</div>
-      ${schedules.map(schedule => {
-        const { meta, input } = parseScheduleRecord(schedule);
-        const details = describeSchedule(schedule, input, meta);
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:8px">Saved Searches</div>
+      ${searches.map(search => {
+        const details = describeSchedule(search);
         return `<div class="schedule-item">
           <div class="schedule-item-left">
-            <div class="schedule-label">${schedule.title || 'Scheduled search'}</div>
+            <div class="schedule-label">${search.title || 'Saved search'}</div>
             <div class="schedule-meta">${details.summary}</div>
-            <div class="schedule-meta">Next run: ${details.nextRun}</div>
-            <div class="schedule-meta">Email delivery: ${details.emailMode === 'none' ? 'Off' : `Digest to ${details.defaultEmail}${meta.extraRecipients?.length ? `, ${meta.extraRecipients.join(', ')}` : ''}`}</div>
+            <div class="schedule-meta">${details.delivery}</div>
+            <div class="schedule-meta">Next search: ${details.nextSearch}</div>
           </div>
           <div class="schedule-actions">
-            <button class="btn" type="button" onclick="editSchedule('${schedule.id}')">Edit</button>
-            <button class="btn" type="button" onclick="deleteSchedule('${schedule.id}')">Delete</button>
+            <button class="btn" type="button" onclick="runSavedSearch('${search.id}')">Search</button>
+            <button class="btn" type="button" onclick="editSchedule('${search.id}')">Edit</button>
+            <button class="btn" type="button" onclick="deleteSchedule('${search.id}')">Delete</button>
           </div>
         </div>`;
       }).join('')}
@@ -1504,13 +1661,52 @@
   }
 
   async function editSchedule(id) {
-    const r = await apifyFetch(`/schedules/${id}`);
+    const records = await loadSavedSearchRecords();
+    const saved = records.find(record => record.id === id);
+    if (saved) {
+      loadScheduleIntoEditor(saved);
+      return;
+    }
+    const r = await apifyFetch('/schedules?limit=100&desc=1');
     if (!r.ok) {
-      showSaveStatus('Could not load scheduled search');
+      showSaveStatus('Could not load saved search');
       return;
     }
     const { data } = await r.json();
-    loadScheduleIntoEditor(data);
+    const match = (data.items || []).find(schedule => {
+      const { meta } = parseScheduleRecord(schedule);
+      return meta.marker === SCHEDULE_MARKER && meta.ownerEmail === userEmail && (meta.savedSearchId === id || schedule.name === id || schedule.id === id);
+    });
+    if (!match) {
+      showSaveStatus('Could not load saved search');
+      return;
+    }
+    loadScheduleIntoEditor(scheduleToSavedSearch(match));
+  }
+
+  async function runSavedSearch(id) {
+    const records = await loadSavedSearchRecords();
+    const saved = records.find(record => record.id === id);
+    if (!saved) {
+      showSaveStatus('Could not load saved search');
+      return;
+    }
+    applyPrefs(saved.prefs || {});
+    const resultsTab = document.querySelectorAll('.tab')[0];
+    if (resultsTab) switchTab('results', resultsTab);
+    await runNow();
+  }
+
+  function openSaveSearch() {
+    flushTagInputs();
+    const prefs = buildPrefs();
+    if (!savedSearchEditId) {
+      document.getElementById('sched-name').value = getDefaultScheduleName(prefs);
+    }
+    const settingsTab = document.querySelectorAll('.tab')[1];
+    if (settingsTab) switchTab('settings', settingsTab);
+    toggleScheduleOptions();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function handleLinkActions() {
@@ -1529,7 +1725,8 @@
         showSaveStatus('This digest was already unsubscribed');
         return;
       }
-      await deleteSchedule(match.id);
+      const { meta } = parseScheduleRecord(match);
+      await deleteSchedule(meta.savedSearchId || match.name || match.id);
       showSaveStatus('Digest unsubscribed');
       const settingsTab = document.querySelectorAll('.tab')[1];
       switchTab('settings', settingsTab);

@@ -104,6 +104,7 @@ async def main():
                 "address": listing["address"],
                 "pets_allowed": listing["pets_allowed"],
                 "available_date": listing["available_date"],
+                "date_listed": listing.get("date_listed"),
                 "nearest_subway": station.get("name"),
                 "subway_distance_miles": station.get("distance_miles"),
                 "subway_lines": station.get("lines"),

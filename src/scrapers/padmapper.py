@@ -195,6 +195,7 @@ class PadmapperScraper:
             "lng": _as_float(item.get("lng")),
             "pets_allowed": bool(item.get("pets")),
             "available_date": item.get("date_available"),
+            "date_listed": item.get("listed_on") or item.get("created_on") or item.get("modified_on"),
             "source": "padmapper",
             "image_url": None,
             "description": item.get("neighborhood_name"),
