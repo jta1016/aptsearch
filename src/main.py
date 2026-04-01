@@ -70,7 +70,10 @@ async def main():
         Actor.log.info(f"Total before ranking: {len(all_listings)}")
 
         ranked = rank_listings(all_listings, criteria)
+        digest_id = inp.get("digest_id") or (normalize_recipients(inp)[0] if normalize_recipients(inp) else "default")
+        ranked, new_count = await prioritize_new_listings(digest_id, ranked)
         top_n = ranked[: criteria["results_per_run"]]
+        await remember_seen_listings(digest_id, top_n)
 
         Actor.log.info(f"Returning top {len(top_n)} results")
 
@@ -99,17 +102,78 @@ async def main():
 
         await Actor.push_data(output)
 
-        # Send results email if recipient is configured
-        recipient = inp.get("email") or os.environ.get("RESULTS_EMAIL")
-        if recipient and output:
-            send_results_email(recipient, output, criteria)
-        elif recipient and not output:
+        # Send results email if one or more recipients are configured
+        recipients = normalize_recipients(inp)
+        if recipients and output:
+            send_results_email(recipients, output, criteria, inp, new_count)
+        elif recipients and not output:
             Actor.log.info("No results to email.")
         else:
             Actor.log.info("No email recipient configured — skipping email.")
 
 
-def send_results_email(recipient: str, listings: list, criteria: dict):
+def normalize_recipients(inp: dict) -> list[str]:
+    recipients: list[str] = []
+
+    raw_emails = inp.get("emails")
+    if isinstance(raw_emails, list):
+        recipients.extend(raw_emails)
+    elif isinstance(raw_emails, str):
+        recipients.extend(raw_emails.split(","))
+
+    raw_email = inp.get("email") or os.environ.get("RESULTS_EMAIL")
+    if isinstance(raw_email, str):
+        recipients.extend(raw_email.split(","))
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in recipients:
+        email = value.strip()
+        if not email:
+            continue
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(email)
+    return deduped
+
+
+async def prioritize_new_listings(digest_id: str, listings: list[dict]) -> tuple[list[dict], int]:
+    seen_key = f"seen-{digest_id}"
+    seen_record = await Actor.get_value(seen_key) or {}
+    seen_urls = set(seen_record.get("urls") or [])
+    fresh: list[dict] = []
+    seen_again: list[dict] = []
+
+    for listing in listings:
+        is_new = listing.get("url") not in seen_urls
+        listing["_is_new"] = is_new
+        if is_new:
+            fresh.append(listing)
+        else:
+            seen_again.append(listing)
+
+    return fresh + seen_again, len(fresh)
+
+
+async def remember_seen_listings(digest_id: str, listings: list[dict]) -> None:
+    seen_key = f"seen-{digest_id}"
+    seen_record = await Actor.get_value(seen_key) or {}
+    existing = list(seen_record.get("urls") or [])
+    merged = []
+    seen = set()
+
+    for url in [item.get("url") for item in listings if item.get("url")] + existing:
+        if url in seen:
+            continue
+        seen.add(url)
+        merged.append(url)
+
+    await Actor.set_value(seen_key, {"urls": merged[:1000]})
+
+
+def send_results_email(recipients: list[str], listings: list, criteria: dict, inp: dict, new_count: int):
     smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
     smtp_user = os.environ.get("SMTP_USER")
@@ -121,13 +185,16 @@ def send_results_email(recipient: str, listings: list, criteria: dict):
         )
         return
 
-    subject = f"Apt Search: {len(listings)} listing{'s' if len(listings) != 1 else ''} found"
-    html = _build_email_html(listings, criteria)
+    if new_count:
+        subject = f"Apt Search: {new_count} new listing{'s' if new_count != 1 else ''}"
+    else:
+        subject = f"Apt Search: {len(listings)} listing{'s' if len(listings) != 1 else ''} found"
+    html = _build_email_html(listings, criteria, inp, new_count)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = smtp_user
-    msg["To"] = recipient
+    msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html, "html"))
 
     try:
@@ -135,13 +202,13 @@ def send_results_email(recipient: str, listings: list, criteria: dict):
             server.ehlo()
             server.starttls()
             server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-        Actor.log.info(f"Email sent to {recipient}")
+            server.send_message(msg, to_addrs=recipients)
+        Actor.log.info(f"Email sent to {', '.join(recipients)}")
     except Exception as e:
         Actor.log.warning(f"Email failed: {e}")
 
 
-def _build_email_html(listings: list, criteria: dict) -> str:
+def _build_email_html(listings: list, criteria: dict, inp: dict, new_count: int) -> str:
     source_labels = {
         "craigslist": "Craigslist",
         "zillow": "Zillow",
@@ -164,10 +231,17 @@ def _build_email_html(listings: list, criteria: dict) -> str:
             if item.get("image_url")
             else ""
         )
+        new_badge = (
+            '<span style="display:inline-block;background:#dcfce7;color:#166534;padding:2px 8px;'
+            'border-radius:999px;font-size:11px;font-weight:700;margin-bottom:8px">NEW</span>'
+            if item.get("_is_new")
+            else ""
+        )
         rows.append(f"""
         <tr>
           <td style="padding:16px;border-bottom:1px solid #e5e5e3;vertical-align:top">
             {img_html}
+            {new_badge}
             <div style="font-size:20px;font-weight:700;margin-bottom:4px">{price}</div>
             <div style="font-size:13px;color:#6b7280;margin-bottom:4px">{meta}{subway}</div>
             <div style="font-size:13px;margin-bottom:8px">{item.get('address') or item.get('title') or '—'}</div>
@@ -179,6 +253,23 @@ def _build_email_html(listings: list, criteria: dict) -> str:
     neighborhoods = ", ".join(criteria.get("neighborhoods") or [])
     zipcodes = ", ".join(criteria.get("zipcodes") or [])
     location_summary = neighborhoods or zipcodes or "New York City"
+    manage_url = inp.get("manage_url") or os.environ.get("APP_BASE_URL") or ""
+    unsubscribe_url = inp.get("unsubscribe_url") or ""
+    digest_summary = (
+        f"{new_count} new listing{'s' if new_count != 1 else ''} first"
+        if new_count
+        else "No brand-new listings this run"
+    )
+    action_links = []
+    if manage_url:
+        action_links.append(
+            f'<a href="{manage_url}" style="color:#2563eb;text-decoration:none">Edit preferences</a>'
+        )
+    if unsubscribe_url:
+        action_links.append(
+            f'<a href="{unsubscribe_url}" style="color:#2563eb;text-decoration:none">Unsubscribe this digest</a>'
+        )
+    footer_links = " · ".join(action_links) if action_links else "Manage your saved searches in Apt Search"
 
     return f"""<!DOCTYPE html>
 <html>
@@ -187,8 +278,9 @@ def _build_email_html(listings: list, criteria: dict) -> str:
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto">
     <tr>
       <td style="background:#2563eb;padding:20px 24px;border-radius:12px 12px 0 0">
-        <div style="color:#fff;font-size:20px;font-weight:700">🏠 Apt Search Results</div>
+        <div style="color:#fff;font-size:20px;font-weight:700">🏠 Apt Search Digest</div>
         <div style="color:#bfdbfe;font-size:13px;margin-top:4px">{len(listings)} listing{'s' if len(listings) != 1 else ''} · {location_summary}</div>
+        <div style="color:#dbeafe;font-size:13px;margin-top:8px">{digest_summary}</div>
       </td>
     </tr>
     <tr>
@@ -200,7 +292,7 @@ def _build_email_html(listings: list, criteria: dict) -> str:
     </tr>
     <tr>
       <td style="padding:16px;text-align:center;font-size:12px;color:#9ca3af">
-        Sent by Apt Search · Manage your searches at your Apt Search site
+        Sent by Apt Search · {footer_links}
       </td>
     </tr>
   </table>

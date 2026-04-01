@@ -13,8 +13,13 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://www.google.com/",
+    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"macOS"',
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "cross-site",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 ZIP_TO_SLUG = {
@@ -57,38 +62,61 @@ class ZillowScraper:
 
     async def scrape(self) -> list[dict]:
         listings = []
-        slugs = self._get_slugs()
+        zipcodes = self.criteria.get("zipcodes", [])
+
+        # Prefer direct zip URL; fall back to neighborhood slugs if no zipcodes given.
+        if zipcodes:
+            urls = [self._zip_url(z) for z in zipcodes]
+        else:
+            slugs = self._get_slugs()
+            urls = [self._slug_url(s) for s in slugs]
+
         async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-            for slug in slugs:
+            for url in urls:
                 try:
-                    results = await self._fetch(client, slug)
+                    results = await self._fetch(client, url)
                     listings.extend(results)
                 except Exception as e:
-                    print(f"[zillow] error for {slug}: {e}")
+                    print(f"[zillow] error for {url}: {e}")
+
         seen = set()
         unique = []
-        for l in listings:
-            key = l["url"] + str(l.get("bedrooms"))
+        for listing in listings:
+            key = listing["url"] + str(listing.get("bedrooms"))
             if key not in seen:
                 seen.add(key)
-                unique.append(l)
+                unique.append(listing)
         return unique
 
     def _get_slugs(self) -> list[str]:
-        zipcodes = self.criteria.get("zipcodes", [])
-        if zipcodes:
-            return list({ZIP_TO_SLUG.get(z, DEFAULT_SLUG) for z in zipcodes})
         neighborhoods = self.criteria.get("neighborhoods", [])
         if neighborhoods:
             return [n.lower().replace(" ", "-") + "-new-york-ny" for n in neighborhoods]
         return [DEFAULT_SLUG]
 
-    def _build_url(self, slug: str) -> str:
-        params = []
+    def _zip_url(self, zipcode: str) -> str:
+        """Build a Zillow rentals URL using zip code directly."""
         min_price = self.criteria.get("min_price")
         max_price = self.criteria.get("max_price")
         min_beds = self.criteria.get("min_bedrooms")
         max_beds = self.criteria.get("max_bedrooms")
+
+        params = []
+        if min_price or max_price:
+            params.append(f"price={min_price or 0}-{max_price or 99999}")
+        if min_beds is not None or max_beds is not None:
+            params.append(f"beds={min_beds or 0}-{max_beds or 8}")
+        query = ("?" + "&".join(params)) if params else ""
+        return f"https://www.zillow.com/homes/for_rent/{zipcode}_rb/{query}"
+
+    def _slug_url(self, slug: str) -> str:
+        """Build a Zillow rentals URL using a neighborhood slug."""
+        min_price = self.criteria.get("min_price")
+        max_price = self.criteria.get("max_price")
+        min_beds = self.criteria.get("min_bedrooms")
+        max_beds = self.criteria.get("max_bedrooms")
+
+        params = []
         if min_price or max_price:
             params.append(f"price={min_price or 0}-{max_price or 99999}")
         if min_beds is not None or max_beds is not None:
@@ -96,8 +124,7 @@ class ZillowScraper:
         query = ("?" + "&".join(params)) if params else ""
         return f"https://www.zillow.com/{slug}/rentals/{query}"
 
-    async def _fetch(self, client: httpx.AsyncClient, slug: str) -> list[dict]:
-        url = self._build_url(slug)
+    async def _fetch(self, client: httpx.AsyncClient, url: str) -> list[dict]:
         resp = await client.get(url)
         if resp.status_code != 200:
             print(f"[zillow] HTTP {resp.status_code} for {url}")
@@ -107,27 +134,66 @@ class ZillowScraper:
     def _parse(self, html: str) -> list[dict]:
         m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
         if not m:
+            print("[zillow] __NEXT_DATA__ script tag not found")
             return []
         try:
             data = json.loads(m.group(1))
         except json.JSONDecodeError:
+            print("[zillow] failed to parse __NEXT_DATA__ JSON")
             return []
-        list_results = (
-            data.get("props", {})
-            .get("pageProps", {})
-            .get("searchPageState", {})
-            .get("cat1", {})
-            .get("searchResults", {})
-            .get("listResults", [])
-        )
+
+        list_results = self._extract_list_results(data)
+        if list_results is None:
+            print("[zillow] could not find listResults in __NEXT_DATA__")
+            return []
+
         listings = []
         for item in list_results:
             try:
-                expanded = self._expand_item(item)
-                listings.extend(expanded)
+                listings.extend(self._expand_item(item))
             except Exception:
                 continue
         return listings
+
+    def _extract_list_results(self, data: dict) -> list | None:
+        """Try multiple known JSON paths for listResults."""
+        page_props = data.get("props", {}).get("pageProps", {})
+
+        paths = [
+            # Current Next.js structure
+            ["searchPageState", "cat1", "searchResults", "listResults"],
+            # Alternate path seen in 2024
+            ["cat1", "searchResults", "listResults"],
+            # Older structure
+            ["initialData", "cat1", "searchResults", "listResults"],
+            ["initialSearchData", "cat1", "searchResults", "listResults"],
+        ]
+        for path in paths:
+            node = page_props
+            for key in path:
+                if isinstance(node, dict):
+                    node = node.get(key)
+                else:
+                    node = None
+                    break
+            if isinstance(node, list):
+                return node
+
+        # Deep search: look for any key named listResults
+        return self._deep_find(page_props, "listResults")
+
+    def _deep_find(self, obj, key: str, depth: int = 0):
+        """Recursively search for a key in nested dicts."""
+        if depth > 8:
+            return None
+        if isinstance(obj, dict):
+            if key in obj and isinstance(obj[key], list):
+                return obj[key]
+            for v in obj.values():
+                result = self._deep_find(v, key, depth + 1)
+                if result is not None:
+                    return result
+        return None
 
     def _expand_item(self, item: dict) -> list[dict]:
         """Buildings have a units array — expand into one listing per unit."""
@@ -142,13 +208,10 @@ class ZillowScraper:
         building_name = item.get("statusText", "") or item.get("buildingName", "")
         lat = item.get("latLong", {}).get("latitude") if item.get("latLong") else None
         lng = item.get("latLong", {}).get("longitude") if item.get("latLong") else None
-        image = None
-        if item.get("imgSrc"):
-            image = item["imgSrc"]
+        image = item.get("imgSrc") or None
 
         units = item.get("units", [])
         if not units:
-            # Single listing (not a building)
             price_text = item.get("price", "") or item.get("unformattedPrice", "")
             price = _parse_price(str(price_text))
             beds_raw = item.get("beds")
@@ -175,7 +238,6 @@ class ZillowScraper:
             beds_raw = unit.get("beds")
             beds = int(beds_raw) if beds_raw is not None else None
 
-            # Apply bed filter
             min_beds = self.criteria.get("min_bedrooms")
             max_beds = self.criteria.get("max_bedrooms")
             if min_beds is not None and beds is not None and beds < min_beds:
