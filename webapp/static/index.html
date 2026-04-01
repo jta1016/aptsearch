@@ -334,6 +334,139 @@
 
     .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Mobile filter toggle (hidden on desktop) ── */
+    #filter-toggle {
+      display: none;
+    }
+
+    /* ── Responsive: mobile ── */
+    @media (max-width: 768px) {
+      /* Header: wrap onto two lines if needed */
+      header {
+        height: auto;
+        min-height: 56px;
+        padding: 10px 16px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      header h1 { font-size: 15px; }
+
+      .header-actions {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .tabs { flex: 1; }
+
+      .tab { padding: 6px 10px; font-size: 11px; }
+
+      #run-btn { min-height: 44px; padding: 10px 14px; }
+
+      /* Layout: stack sidebar above main */
+      .layout { flex-direction: column; }
+
+      /* Sidebar: full-width, hidden by default on mobile */
+      aside {
+        width: 100%;
+        min-width: 0;
+        position: static;
+        height: auto;
+        max-height: none;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        overflow-y: visible;
+        padding: 16px;
+        display: none;
+      }
+
+      aside.mobile-open { display: block; }
+
+      /* Filter toggle button: visible on mobile */
+      #filter-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        width: calc(100% - 32px);
+        margin: 12px 16px 0;
+        min-height: 44px;
+      }
+
+      #filter-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+      main { padding: 16px; }
+
+      /* Cards: single column on narrow screens */
+      .cards {
+        grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+      }
+
+      /* Prevent iOS from zooming in on focused inputs (needs font-size >= 16px) */
+      .field input[type="text"],
+      .field input[type="email"],
+      .field input[type="number"],
+      .field input[type="date"],
+      .field select,
+      .tag-input,
+      #email-input {
+        font-size: 16px;
+      }
+
+      /* Larger touch targets for inputs/selects */
+      .field input[type="text"],
+      .field input[type="email"],
+      .field input[type="number"],
+      .field input[type="date"],
+      .field select {
+        padding: 10px 12px;
+      }
+
+      /* Setup card */
+      .setup-card { padding: 28px 20px; }
+
+      /* Settings section: full-width, stack buttons */
+      .settings-section { max-width: 100%; }
+
+      .settings-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .settings-row button {
+        width: 100%;
+        padding: 10px;
+        min-height: 44px;
+      }
+
+      /* Run history items: stack on mobile */
+      .run-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      /* Save button touch target */
+      #save-btn { min-height: 44px; }
+
+      /* Status bar: wrap if needed */
+      #status-bar { flex-wrap: wrap; gap: 8px; }
+    }
+
+    /* Extra small screens */
+    @media (max-width: 400px) {
+      .tabs { gap: 1px; }
+      .tab { padding: 5px 8px; font-size: 10px; }
+    }
   </style>
 </head>
 <body>
@@ -366,9 +499,11 @@
     </div>
   </header>
 
+  <button id="filter-toggle" onclick="toggleFilters()">&#9776; Filters</button>
+
   <div class="layout">
     <!-- Sidebar -->
-    <aside>
+    <aside id="sidebar">
       <h2>Search Criteria</h2>
 
       <div class="field">
@@ -509,6 +644,13 @@
 <script>
   const ACTOR_ID = 'jta93~aptsearch';
   const PREFS_STORE = '~apt-search-prefs';
+
+  function toggleFilters() {
+    const sidebar = document.getElementById('sidebar');
+    const btn = document.getElementById('filter-toggle');
+    const open = sidebar.classList.toggle('mobile-open');
+    btn.textContent = open ? '✕ Close Filters' : '☰ Filters';
+  }
 
   const tags = { zipcodes: [], neighborhoods: [], preferred_subway_lines: [] };
   let pollingInterval = null;
