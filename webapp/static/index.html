@@ -58,12 +58,9 @@
       font-size: 13px;
       margin-bottom: 12px;
       outline: none;
-      font-family: monospace;
     }
 
     .setup-card input:focus { border-color: var(--accent); }
-
-    .setup-card a { color: var(--accent); font-size: 12px; display: block; margin-bottom: 20px; }
 
     /* ── Main app ── */
     #app { display: none; }
@@ -346,10 +343,9 @@
   <div class="setup-card">
     <div style="font-size:48px;margin-bottom:16px">🏠</div>
     <h1>Apt Search</h1>
-    <p>Enter your Apify API token to get started. It's stored locally in your browser — never sent anywhere except Apify.</p>
-    <input type="password" id="token-input" placeholder="apify_api_..." />
-    <a href="https://console.apify.com/settings/integrations" target="_blank">Get your token →</a>
-    <button class="btn btn-primary" style="width:100%" onclick="saveToken()">Continue</button>
+    <p>Enter your email to load your saved search preferences and receive the daily digest.</p>
+    <input type="email" id="email-input" placeholder="you@gmail.com" onkeydown="if(event.key==='Enter')saveEmail()" />
+    <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="saveEmail()">Continue</button>
     <div id="token-error" style="color:#dc2626;font-size:12px;margin-top:8px"></div>
   </div>
 </div>
@@ -497,9 +493,9 @@
 
           <hr class="divider" />
 
-          <h3>Apify Token</h3>
-          <p>Your token is stored in your browser's localStorage.</p>
-          <button class="btn" onclick="resetToken()">Reset Token</button>
+          <h3>Account</h3>
+          <p>Signed in as <strong id="current-email-display"></strong></p>
+          <button class="btn" onclick="resetEmail()">Switch Account</button>
 
           <div class="info-box" style="margin-top:16px">
             <strong>Daily runs</strong> happen automatically at 8am CT via a scheduled cloud agent — no computer required. Results show up here and in your Gmail drafts.
@@ -512,45 +508,48 @@
 
 <script>
   const ACTOR_ID = 'jta93~aptsearch';
-  const APIFY = 'https://api.apify.com/v2';
-  const PREFS_STORE = '~apt-search-prefs'; // named KV store
+  const PREFS_STORE = '~apt-search-prefs';
 
   const tags = { zipcodes: [], neighborhoods: [], preferred_subway_lines: [] };
   let pollingInterval = null;
-  let token = localStorage.getItem('apify_token') || '';
+  let userEmail = localStorage.getItem('apt_email') || '';
+
+  // All Apify calls go through our server-side proxy so the token stays secret
+  function apifyFetch(path, options = {}) {
+    return fetch(`/api/apify?path=${encodeURIComponent(path)}`, options);
+  }
 
   // ── Setup ───────────────────────────────────────────────────────────────────
   function init() {
-    if (token) {
+    if (userEmail) {
       showApp();
     } else {
       document.getElementById('setup-screen').style.display = 'flex';
     }
   }
 
-  async function saveToken() {
-    const t = document.getElementById('token-input').value.trim();
-    if (!t) return;
-    // Quick validation
-    try {
-      const r = await fetch(`${APIFY}/acts/${ACTOR_ID}?token=${t}`);
-      if (!r.ok) throw new Error('Invalid token');
-      token = t;
-      localStorage.setItem('apify_token', t);
-      showApp();
-    } catch {
-      document.getElementById('token-error').textContent = 'Could not validate token — check it and try again.';
+  function saveEmail() {
+    const e = document.getElementById('email-input').value.trim();
+    if (!e || !e.includes('@')) {
+      document.getElementById('token-error').textContent = 'Enter a valid email.';
+      return;
     }
+    userEmail = e;
+    localStorage.setItem('apt_email', e);
+    showApp();
   }
 
-  function resetToken() {
-    localStorage.removeItem('apify_token');
+  function resetEmail() {
+    localStorage.removeItem('apt_email');
+    localStorage.removeItem('apt_prefs');
     location.reload();
   }
 
   function showApp() {
     document.getElementById('setup-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
+    const el = document.getElementById('current-email-display');
+    if (el) el.textContent = userEmail;
     loadPrefs();
     loadLatestResults();
   }
@@ -636,10 +635,12 @@
     });
   }
 
+  // Preferences are stored per-email so each user has their own
+  function prefsKey() { return `prefs-${userEmail}`; }
+
   async function loadPrefs() {
-    // Try Apify KV store first, fall back to localStorage
     try {
-      const r = await apifyGet(`/key-value-stores/${PREFS_STORE}/records/prefs`);
+      const r = await apifyFetch(`/key-value-stores/${PREFS_STORE}/records/${encodeURIComponent(prefsKey())}`);
       if (r.ok) { applyPrefs(await r.json()); return; }
     } catch {}
     const local = localStorage.getItem('apt_prefs');
@@ -648,11 +649,12 @@
 
   async function savePrefs() {
     const prefs = buildPrefs();
+    prefs.email = userEmail; // always sync email from login
     localStorage.setItem('apt_prefs', JSON.stringify(prefs));
 
-    // Save to Apify KV store so the daily agent can read them
+    // Save to Apify KV store keyed by email
     try {
-      await fetch(`${APIFY}/key-value-stores/${PREFS_STORE}/records/prefs?token=${token}`, {
+      await apifyFetch(`/key-value-stores/${PREFS_STORE}/records/${encodeURIComponent(prefsKey())}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(prefs),
@@ -662,15 +664,6 @@
     const s = document.getElementById('save-status');
     s.textContent = '✓ Saved';
     setTimeout(() => s.textContent = '', 2000);
-  }
-
-  function saveEmail() {
-    savePrefs();
-  }
-
-  // ── Apify helpers ───────────────────────────────────────────────────────────
-  function apifyGet(path) {
-    return fetch(`${APIFY}${path}?token=${token}`);
   }
 
   // ── Run ─────────────────────────────────────────────────────────────────────
@@ -684,7 +677,7 @@
     document.getElementById('run-btn').disabled = true;
     document.getElementById('run-label').innerHTML = '<span class="spinner"></span>';
 
-    const r = await fetch(`${APIFY}/acts/${ACTOR_ID}/runs?token=${token}`, {
+    const r = await apifyFetch(`/acts/${ACTOR_ID}/runs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input }),
@@ -696,7 +689,7 @@
   }
 
   async function pollRun(runId) {
-    const r = await apifyGet(`/actor-runs/${runId}`);
+    const r = await apifyFetch(`/actor-runs/${runId}`);
     const { data } = await r.json();
     if (['SUCCEEDED','FAILED','ABORTED','TIMED-OUT'].includes(data.status)) {
       clearInterval(pollingInterval);
@@ -720,7 +713,7 @@
   // ── Results ─────────────────────────────────────────────────────────────────
   async function loadLatestResults() {
     try {
-      const r = await apifyGet(`/acts/${ACTOR_ID}/runs/last`);
+      const r = await apifyFetch(`/acts/${ACTOR_ID}/runs/last`);
       if (!r.ok) { renderResults([]); return; }
       const { data } = await r.json();
       if (data.status === 'RUNNING') {
@@ -736,7 +729,7 @@
   }
 
   async function loadResultsFromDataset(datasetId) {
-    const r = await apifyGet(`/datasets/${datasetId}/items`);
+    const r = await apifyFetch(`/datasets/${datasetId}/items`);
     renderResults(await r.json());
   }
 
@@ -766,7 +759,7 @@
     const list = document.getElementById('run-list');
     list.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
     try {
-      const r = await apifyGet(`/acts/${ACTOR_ID}/runs?limit=20&desc=1`);
+      const r = await apifyFetch(`/acts/${ACTOR_ID}/runs?limit=20&desc=1`);
       const { data } = await r.json();
       const runs = data.items || [];
       if (!runs.length) { list.innerHTML = '<div class="empty-state"><div style="font-size:48px">📋</div><p>No runs yet.</p></div>'; return; }
