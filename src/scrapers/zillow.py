@@ -8,8 +8,9 @@ import json
 import httpx
 from urllib.parse import urljoin
 
+from apify import Actor
 from bs4 import BeautifulSoup
-from browser_fetch import fetch_page_html
+from browser_fetch import fetch_page_artifacts
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -135,7 +136,10 @@ class ZillowScraper:
 
         print(f"[zillow] HTTP {resp.status_code} for {url}")
         try:
-            html = await fetch_page_html(url)
+            artifacts = await fetch_page_artifacts(url)
+            await self._store_browser_artifacts(url, artifacts)
+            self._log_browser_artifacts(url, artifacts)
+            html = artifacts["html"]
             results = self._parse(html)
             if results:
                 print(f"[zillow] Playwright fallback returned {len(results)} listings for {url}")
@@ -435,6 +439,54 @@ class ZillowScraper:
     def _extract_zipcode(self, text: str) -> str | None:
         match = re.search(r"\b(\d{5})(?:-\d{4})?\b", text or "")
         return match.group(1) if match else None
+
+    async def _store_browser_artifacts(self, url: str, artifacts: dict) -> None:
+        if not (Actor.is_at_home() or getattr(Actor, "config", None)):
+            return
+
+        key_suffix = re.sub(r"[^\w]+", "-", url).strip("-").lower()[:80]
+        key = f"zillow-browser-{key_suffix}"
+        compact_artifacts = {
+            "url": url,
+            "final_url": artifacts.get("final_url"),
+            "title": artifacts.get("title"),
+            "challenge_signals": artifacts.get("challenge_signals") or [],
+            "cookies": [
+                {
+                    "name": cookie.get("name"),
+                    "domain": cookie.get("domain"),
+                    "expires": cookie.get("expires"),
+                }
+                for cookie in artifacts.get("cookies", [])[:20]
+            ],
+            "requests": artifacts.get("requests", [])[:20],
+            "responses": artifacts.get("responses", [])[:20],
+            "html_preview": (artifacts.get("html") or "")[:3000],
+        }
+        try:
+            await Actor.set_value(key, compact_artifacts)
+            print(f"[zillow] stored browser artifacts in key-value store: {key}")
+        except Exception as exc:
+            print(f"[zillow] failed to store browser artifacts for {url}: {exc}")
+
+    def _log_browser_artifacts(self, url: str, artifacts: dict) -> None:
+        print(
+            "[zillow] browser summary "
+            f"url={url} final_url={artifacts.get('final_url')} "
+            f"title={artifacts.get('title')!r} "
+            f"challenge_signals={artifacts.get('challenge_signals') or []}"
+        )
+        for response in artifacts.get("responses", [])[:8]:
+            preview = response.get("body_preview")
+            print(
+                "[zillow] browser response "
+                f"status={response.get('status')} "
+                f"type={response.get('resource_type')} "
+                f"url={response.get('url')} "
+                f"content_type={response.get('content_type')}"
+            )
+            if preview:
+                print(f"[zillow] browser body preview: {preview}")
 
 
 def _parse_price(text: str) -> int | None:
