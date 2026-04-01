@@ -1,14 +1,20 @@
 """
 Apartments.com scraper.
+
 Strategy:
-  1. POST to the internal search-service API (/services/search/) for JSON results.
-  2. If that fails, GET the search results page and extract embedded JSON
-     (window.__INITIAL_STATE__ / window.resultsList / etc.).
-  3. If both fail, parse listing cards from the HTML with BeautifulSoup.
-No browser required — uses httpx only.
+  1. Try the legacy search-service API.
+  2. Parse the search page itself.
+  3. Prefer rendered Playwright HTML in local environments, and fall back to
+     it whenever the static page is blocked or empty.
+
+Rendered HTML is parsed from:
+  - embedded JSON blobs
+  - JSON-LD listing blocks
+  - placard/article cards and data-* attributes
 """
 import re
 import json
+import os
 import httpx
 from apify import Actor
 from bs4 import BeautifulSoup
@@ -75,7 +81,16 @@ class ApartmentsComScraper:
         session_id = self._session_id(zipcode)
         proxy_url = await get_proxy_url("apartments_com", session_id=session_id)
 
-        # Try 1: JSON search service
+        # Primary path: rendered HTML, including Playwright-rendered DOM.
+        try:
+            results = await self._page_search(client, zipcode, proxy_url=proxy_url, session_id=session_id)
+            if results:
+                print(f"[apartments_com] page HTML returned {len(results)} listings for {zipcode}")
+                return results
+        except Exception as e:
+            print(f"[apartments_com] page HTML attempt failed for {zipcode}: {e}")
+
+        # Secondary path: legacy search-service API.
         try:
             results = await self._api_search(client, zipcode, proxy_url=proxy_url)
             if results:
@@ -83,15 +98,6 @@ class ApartmentsComScraper:
                 return results
         except Exception as e:
             print(f"[apartments_com] API attempt failed for {zipcode}: {e}")
-
-        # Try 2: fetch page HTML → extract embedded JSON
-        try:
-            results = await self._page_search(client, zipcode, proxy_url=proxy_url, session_id=session_id)
-            if results:
-                print(f"[apartments_com] page JSON returned {len(results)} listings for {zipcode}")
-                return results
-        except Exception as e:
-            print(f"[apartments_com] page JSON attempt failed for {zipcode}: {e}")
 
         print(f"[apartments_com] all attempts failed for {zipcode}")
         return []
@@ -187,25 +193,51 @@ class ApartmentsComScraper:
             price_seg += f"max-price-{max_price}-"
         bed_seg = f"{min_beds}-bedrooms/" if min_beds else ""
         url = f"https://www.apartments.com/{zipcode}/{price_seg}{bed_seg}"
+        local_browser_first = not (Actor.is_at_home() or os.environ.get("APIFY_TOKEN"))
+
+        if local_browser_first:
+            results = await self._playwright_search(url, zipcode, session_id=session_id)
+            if results:
+                return results
 
         resp = await self._request(client, "GET", url, headers=_HTML_HEADERS, proxy_url=proxy_url)
         print(f"[apartments_com] page GET HTTP {resp.status_code} for {url}")
         if resp.status_code == 200 and not self._looks_blocked(resp.text):
             html = resp.text
+            results = self._extract_from_html(html, zipcode)
+            if results:
+                return results
         else:
-            print(f"[apartments_com] switching to Playwright for {url}")
-            artifacts = await fetch_page_artifacts(
-                url,
-                site_name="apartments_com",
-                session_id=session_id,
-            )
-            await self._store_browser_artifacts(zipcode, session_id, artifacts)
-            self._log_browser_artifacts(url, artifacts)
-            html = artifacts["html"]
-            if self._looks_blocked(html):
-                print(f"[apartments_com] Playwright still received a blocked page for {url}")
+            return await self._playwright_search(url, zipcode, session_id=session_id)
 
-        # Try several embedded-JSON patterns.
+        return await self._playwright_search(url, zipcode, session_id=session_id)
+
+    async def _playwright_search(self, url: str, zipcode: str, *, session_id: str | None = None) -> list[dict]:
+        print(f"[apartments_com] switching to Playwright for {url}")
+        artifacts = await fetch_page_artifacts(
+            url,
+            wait_for_selector="article.placard",
+            site_name="apartments_com",
+            session_id=session_id,
+        )
+        await self._store_browser_artifacts(zipcode, session_id, artifacts)
+        self._log_browser_artifacts(url, artifacts)
+        html = artifacts["html"]
+        if self._looks_blocked(html):
+            print(f"[apartments_com] Playwright still received a blocked page for {url}")
+            return []
+        return self._extract_from_html(html, zipcode)
+
+    def _extract_from_html(self, html: str, zipcode: str) -> list[dict]:
+        results = self._parse_json_ld(html, zipcode)
+        if results:
+            print(f"[apartments_com] JSON-LD parse found {len(results)} listings for {zipcode}")
+            return results
+
+        results = self._parse_html_cards(html, zipcode)
+        if results:
+            return results
+
         for pattern, extractor in [
             (r'window\.__INITIAL_STATE__\s*=\s*(\{.+?\})\s*;', self._extract_initial_state),
             (r'window\.resultsList\s*=\s*(\[.+?\])\s*;', self._extract_results_list),
@@ -221,8 +253,7 @@ class ApartmentsComScraper:
                 except Exception:
                     pass
 
-        # Last resort: BeautifulSoup card parsing.
-        return self._parse_html_cards(html, zipcode)
+        return []
 
     async def _request(
         self,
@@ -329,9 +360,36 @@ class ApartmentsComScraper:
         items = data.get("items") or []
         return [self._map_api_item(i, zipcode) for i in items if i]
 
+    def _parse_json_ld(self, html: str, zipcode: str) -> list[dict]:
+        soup = BeautifulSoup(html, "lxml")
+        listings = []
+        seen = set()
+
+        for script in soup.select('script[type="application/ld+json"]'):
+            raw = script.string or script.get_text(strip=True)
+            if not raw:
+                continue
+            try:
+                data = json.loads(raw)
+            except Exception:
+                continue
+
+            for node in self._iter_json_ld_nodes(data):
+                listing = self._map_json_ld_listing(node, zipcode)
+                if not listing or not listing.get("url"):
+                    continue
+                key = listing["url"]
+                if key in seen:
+                    continue
+                seen.add(key)
+                listings.append(listing)
+
+        return listings
+
     def _parse_html_cards(self, html: str, zipcode: str) -> list[dict]:
         soup = BeautifulSoup(html, "lxml")
         listings = []
+        seen = set()
         selectors = [
             "article.placard",
             "li.mortar-wrapper",
@@ -347,7 +405,8 @@ class ApartmentsComScraper:
         for card in cards:
             try:
                 listing = self._parse_card(card, zipcode)
-                if listing and listing["url"]:
+                if listing and listing["url"] and listing["url"] not in seen:
+                    seen.add(listing["url"])
                     listings.append(listing)
             except Exception:
                 continue
@@ -356,30 +415,58 @@ class ApartmentsComScraper:
         return listings
 
     def _parse_card(self, card, zipcode: str) -> dict | None:
+        data_url = card.get("data-url") or card.get("data-linkurl")
         link = (
             card.select_one("a.property-link")
             or card.select_one('a[href*="apartments.com"]')
             or card.select_one("a[href]")
         )
-        if not link:
+        if not link and not data_url:
             return None
-        url = link.get("href", "")
+        url = data_url or link.get("href", "")
         if not url.startswith("http"):
             url = "https://www.apartments.com" + url
 
         title_el = card.select_one(".property-title, .js-placardTitle, h2.title, [class*=propertyName]")
-        title = title_el.get_text(strip=True) if title_el else ""
+        title = (
+            card.get("data-propertyname")
+            or card.get("data-listingname")
+            or (title_el.get_text(strip=True) if title_el else "")
+        )
 
         price_el = card.select_one(".price-range, .price, [class*=rentPrice], [class*=rent]")
-        price = _parse_price(price_el.get_text(strip=True) if price_el else "")
+        price = _parse_price(
+            card.get("data-price")
+            or card.get("data-rent")
+            or (price_el.get_text(strip=True) if price_el else "")
+        )
 
-        beds_el = card.select_one("[class*=beds], [class*=bedroom]")
-        baths_el = card.select_one("[class*=baths], [class*=bathroom]")
-        beds = _parse_beds(beds_el.get_text(strip=True) if beds_el else "")
-        baths = _parse_baths(baths_el.get_text(strip=True) if baths_el else "")
+        bed_text = " ".join(filter(None, [
+            card.get("data-beds"),
+            card.get("data-bedrange"),
+            card.get("data-minbeds"),
+            card.get("data-maxbeds"),
+        ]))
+        bath_text = " ".join(filter(None, [
+            card.get("data-baths"),
+            card.get("data-bathrange"),
+            card.get("data-minbaths"),
+            card.get("data-maxbaths"),
+        ]))
+        beds_el = card.select_one("[class*=beds], [class*=bedroom], .bedTextBox")
+        baths_el = card.select_one("[class*=baths], [class*=bathroom], .bathTextBox")
+        beds = _parse_beds(bed_text or (beds_el.get_text(strip=True) if beds_el else ""))
+        baths = _parse_baths(bath_text or (baths_el.get_text(strip=True) if baths_el else ""))
 
         addr_el = card.select_one(".property-address, address, [class*=address]")
-        address = addr_el.get_text(strip=True) if addr_el else ""
+        address = (
+            card.get("data-streetaddress")
+            or card.get("data-address")
+            or (addr_el.get_text(strip=True) if addr_el else "")
+        )
+
+        lat = _as_float(card.get("data-lat")) or _as_float(card.get("data-latitude"))
+        lng = _as_float(card.get("data-lng")) or _as_float(card.get("data-longitude"))
 
         img_el = card.select_one("img")
         image_url = None
@@ -394,12 +481,90 @@ class ApartmentsComScraper:
             "bathrooms": baths,
             "address": address,
             "zipcode": zipcode,
-            "lat": None, "lng": None,
+            "lat": lat, "lng": lng,
             "pets_allowed": None,
             "available_date": None,
             "source": "apartments_com",
             "image_url": image_url,
             "description": None,
+        }
+
+    def _iter_json_ld_nodes(self, data):
+        if isinstance(data, list):
+            for item in data:
+                yield from self._iter_json_ld_nodes(item)
+            return
+
+        if not isinstance(data, dict):
+            return
+
+        if data.get("@type") in {"Apartment", "ApartmentComplex", "Residence", "Place", "Product"}:
+            yield data
+
+        graph = data.get("@graph")
+        if graph:
+            yield from self._iter_json_ld_nodes(graph)
+
+        item_list = data.get("itemListElement")
+        if item_list:
+            for item in item_list:
+                if isinstance(item, dict):
+                    yield from self._iter_json_ld_nodes(item.get("item") or item)
+
+    def _map_json_ld_listing(self, item: dict, zipcode: str) -> dict | None:
+        url = item.get("url") or item.get("@id") or ""
+        if not url:
+            return None
+        if not url.startswith("http"):
+            url = "https://www.apartments.com" + url
+
+        address_obj = item.get("address") or {}
+        if isinstance(address_obj, str):
+            address = address_obj
+        else:
+            address = ", ".join(
+                filter(None, [
+                    address_obj.get("streetAddress"),
+                    address_obj.get("addressLocality"),
+                    address_obj.get("addressRegion"),
+                    address_obj.get("postalCode"),
+                ])
+            )
+
+        geo = item.get("geo") or {}
+        offers = item.get("offers") or {}
+        if isinstance(offers, list):
+            offer_prices = [_as_float(offer.get("price")) for offer in offers if isinstance(offer, dict)]
+            offer_price = min((price for price in offer_prices if price is not None), default=None)
+        else:
+            offer_price = _as_float(offers.get("price"))
+
+        price = _as_float(item.get("lowPrice")) or offer_price or _as_float(item.get("highPrice"))
+        description = item.get("description")
+        amenities = item.get("amenityFeature") or item.get("amenities")
+        if isinstance(amenities, list):
+            amenity_text = ", ".join(
+                feature.get("name") if isinstance(feature, dict) else str(feature)
+                for feature in amenities
+                if feature
+            )
+            description = description or amenity_text
+
+        return {
+            "url": url,
+            "title": item.get("name") or "",
+            "price": int(price) if price is not None else None,
+            "bedrooms": _parse_beds(json.dumps(item)),
+            "bathrooms": _parse_baths(json.dumps(item)),
+            "address": address,
+            "zipcode": (address_obj.get("postalCode") if isinstance(address_obj, dict) else None) or zipcode,
+            "lat": _as_float(geo.get("latitude")),
+            "lng": _as_float(geo.get("longitude")),
+            "pets_allowed": None,
+            "available_date": None,
+            "source": "apartments_com",
+            "image_url": _extract_image_url(item.get("image")),
+            "description": description,
         }
 
 
@@ -425,3 +590,30 @@ def _parse_beds(text: str) -> int | None:
 def _parse_baths(text: str) -> float | None:
     m = re.search(r"([\d.]+)\s*(?:bath|ba)", text, re.I)
     return float(m.group(1)) if m else None
+
+
+def _as_float(value) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_image_url(image) -> str | None:
+    if isinstance(image, str):
+        return image
+    if isinstance(image, list):
+        for item in image:
+            url = _extract_image_url(item)
+            if url:
+                return url
+        return None
+    if isinstance(image, dict):
+        return (
+            image.get("url")
+            or image.get("contentUrl")
+            or image.get("thumbnailUrl")
+        )
+    return None

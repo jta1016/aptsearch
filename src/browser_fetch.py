@@ -46,6 +46,7 @@ async def fetch_page_artifacts(
     url: str,
     *,
     wait_until: str = "domcontentloaded",
+    wait_for_selector: str | None = None,
     timeout_ms: int = DEFAULT_NAV_TIMEOUT_MS,
     site_name: str | None = None,
     session_id: str | None = None,
@@ -162,6 +163,11 @@ async def fetch_page_artifacts(
             page.on("framenavigated", record_navigation)
 
             await page.goto(url, wait_until=wait_until, timeout=timeout_ms)
+            if wait_for_selector:
+                try:
+                    await page.wait_for_selector(wait_for_selector, timeout=timeout_ms)
+                except Exception:
+                    pass
             await page.mouse.move(300, 250)
             await page.mouse.wheel(0, 400)
             await asyncio.sleep(1.5)
@@ -189,6 +195,7 @@ async def fetch_page_html(
     url: str,
     *,
     wait_until: str = "domcontentloaded",
+    wait_for_selector: str | None = None,
     timeout_ms: int = DEFAULT_NAV_TIMEOUT_MS,
     site_name: str | None = None,
     session_id: str | None = None,
@@ -197,6 +204,7 @@ async def fetch_page_html(
     artifacts = await fetch_page_artifacts(
         url,
         wait_until=wait_until,
+        wait_for_selector=wait_for_selector,
         timeout_ms=timeout_ms,
         site_name=site_name,
         session_id=session_id,
