@@ -12,6 +12,7 @@ import json
 import httpx
 from bs4 import BeautifulSoup
 from browser_fetch import fetch_page_html
+from proxy_support import get_proxy_url
 
 # Headers that mimic a real Chrome browser.
 _HTML_HEADERS = {
@@ -70,9 +71,12 @@ class ApartmentsComScraper:
     # ------------------------------------------------------------------
 
     async def _fetch(self, client: httpx.AsyncClient, zipcode: str) -> list[dict]:
+        session_id = self._session_id(zipcode)
+        proxy_url = await get_proxy_url("apartments_com", session_id=session_id)
+
         # Try 1: JSON search service
         try:
-            results = await self._api_search(client, zipcode)
+            results = await self._api_search(client, zipcode, proxy_url=proxy_url)
             if results:
                 print(f"[apartments_com] API returned {len(results)} listings for {zipcode}")
                 return results
@@ -81,7 +85,7 @@ class ApartmentsComScraper:
 
         # Try 2: fetch page HTML → extract embedded JSON
         try:
-            results = await self._page_search(client, zipcode)
+            results = await self._page_search(client, zipcode, proxy_url=proxy_url, session_id=session_id)
             if results:
                 print(f"[apartments_com] page JSON returned {len(results)} listings for {zipcode}")
                 return results
@@ -91,7 +95,7 @@ class ApartmentsComScraper:
         print(f"[apartments_com] all attempts failed for {zipcode}")
         return []
 
-    async def _api_search(self, client: httpx.AsyncClient, zipcode: str) -> list[dict]:
+    async def _api_search(self, client: httpx.AsyncClient, zipcode: str, *, proxy_url: str | None = None) -> list[dict]:
         min_price = self.criteria.get("min_price")
         max_price = self.criteria.get("max_price")
         min_beds = self.criteria.get("min_bedrooms", 0) or 0
@@ -113,10 +117,13 @@ class ApartmentsComScraper:
             "ab": {},
         }
 
-        resp = await client.post(
+        resp = await self._request(
+            client,
+            "POST",
             "https://www.apartments.com/services/search/",
-            json=payload,
             headers=_API_HEADERS,
+            json=payload,
+            proxy_url=proxy_url,
         )
         print(f"[apartments_com] search API HTTP {resp.status_code} for {zipcode}")
         if resp.status_code != 200:
@@ -158,7 +165,14 @@ class ApartmentsComScraper:
     # Fallback: fetch HTML page, extract embedded JSON
     # ------------------------------------------------------------------
 
-    async def _page_search(self, client: httpx.AsyncClient, zipcode: str) -> list[dict]:
+    async def _page_search(
+        self,
+        client: httpx.AsyncClient,
+        zipcode: str,
+        *,
+        proxy_url: str | None = None,
+        session_id: str | None = None,
+    ) -> list[dict]:
         min_price = self.criteria.get("min_price")
         max_price = self.criteria.get("max_price")
         min_beds = self.criteria.get("min_bedrooms", 0) or 0
@@ -173,13 +187,19 @@ class ApartmentsComScraper:
         bed_seg = f"{min_beds}-bedrooms/" if min_beds else ""
         url = f"https://www.apartments.com/{zipcode}/{price_seg}{bed_seg}"
 
-        resp = await client.get(url, headers=_HTML_HEADERS)
+        resp = await self._request(client, "GET", url, headers=_HTML_HEADERS, proxy_url=proxy_url)
         print(f"[apartments_com] page GET HTTP {resp.status_code} for {url}")
-        if resp.status_code == 200:
+        if resp.status_code == 200 and not self._looks_blocked(resp.text):
             html = resp.text
         else:
             print(f"[apartments_com] switching to Playwright for {url}")
-            html = await fetch_page_html(url)
+            html = await fetch_page_html(
+                url,
+                site_name="apartments_com",
+                session_id=session_id,
+            )
+            if self._looks_blocked(html):
+                print(f"[apartments_com] Playwright still received a blocked page for {url}")
 
         # Try several embedded-JSON patterns.
         for pattern, extractor in [
@@ -199,6 +219,31 @@ class ApartmentsComScraper:
 
         # Last resort: BeautifulSoup card parsing.
         return self._parse_html_cards(html, zipcode)
+
+    async def _request(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        url: str,
+        *,
+        proxy_url: str | None = None,
+        **kwargs,
+    ) -> httpx.Response:
+        if not proxy_url:
+            return await client.request(method, url, **kwargs)
+
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True, proxy=proxy_url) as proxied_client:
+            return await proxied_client.request(method, url, **kwargs)
+
+    def _looks_blocked(self, html: str) -> bool:
+        snippet = (html or "")[:1000].lower()
+        return "access denied" in snippet or "errors.edgesuite.net" in snippet
+
+    def _session_id(self, zipcode: str) -> str:
+        min_price = self.criteria.get("min_price") or "na"
+        max_price = self.criteria.get("max_price") or "na"
+        min_beds = self.criteria.get("min_bedrooms") or "na"
+        return f"apts-{zipcode}-{min_price}-{max_price}-{min_beds}"
 
     def _extract_initial_state(self, data: dict, zipcode: str) -> list[dict]:
         items = (
