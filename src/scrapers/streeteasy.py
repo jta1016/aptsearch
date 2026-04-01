@@ -11,6 +11,8 @@ from urllib.parse import quote, urljoin
 import httpx
 from apify import Actor
 from bs4 import BeautifulSoup
+from browser_fetch import fetch_page_artifacts
+from proxy_support import get_proxy_url
 
 
 HEADERS = {
@@ -165,19 +167,42 @@ class StreetEasyScraper:
         return f"{base}/{quote('|'.join(filters), safe='')}"
 
     async def _fetch_page(self, client: httpx.AsyncClient, url: str) -> list[dict]:
-        resp = await client.get(url)
+        proxy_url = await get_proxy_url("streeteasy", session_id=self._session_id(url))
+        resp = await self._request(client, "GET", url, proxy_url=proxy_url)
         print(f"[streeteasy] page GET HTTP {resp.status_code} for {url}")
+        html = resp.text if resp.status_code == 200 else ""
         if resp.status_code != 200:
-            return []
+            artifacts = await fetch_page_artifacts(
+                url,
+                site_name="streeteasy",
+                session_id=self._session_id(url),
+            )
+            await self._store_browser_artifacts(url, artifacts)
+            self._log_browser_artifacts(url, artifacts)
+            html = artifacts["html"]
 
-        listings = self._parse_html(resp.text)
+        listings = self._parse_html(html)
         if listings:
             print(f"[streeteasy] parsed {len(listings)} listings for {url}")
             return listings
 
-        await self._store_html_preview(url, resp.text)
+        await self._store_html_preview(url, html)
         print(f"[streeteasy] no listings parsed for {url}")
         return []
+
+    async def _request(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        url: str,
+        *,
+        proxy_url: str | None = None,
+        **kwargs,
+    ) -> httpx.Response:
+        if not proxy_url:
+            return await client.request(method, url, **kwargs)
+        async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True, proxy=proxy_url) as proxied:
+            return await proxied.request(method, url, **kwargs)
 
     def _parse_html(self, html: str) -> list[dict]:
         soup = BeautifulSoup(html, "lxml")
@@ -319,6 +344,48 @@ class StreetEasyScraper:
             print(f"[streeteasy] stored HTML preview in key-value store: {key}")
         except Exception as exc:
             print(f"[streeteasy] failed to store HTML preview for {url}: {exc}")
+
+    async def _store_browser_artifacts(self, url: str, artifacts: dict) -> None:
+        if not (Actor.is_at_home() or getattr(Actor, "config", None)):
+            return
+        key_suffix = re.sub(r"[^\w]+", "-", url).strip("-").lower()[:90]
+        key = f"streeteasy-browser-{key_suffix}"
+        value = {
+            "url": url,
+            "final_url": artifacts.get("final_url"),
+            "title": artifacts.get("title"),
+            "challenge_signals": artifacts.get("challenge_signals") or [],
+            "requests": artifacts.get("requests", [])[:20],
+            "responses": artifacts.get("responses", [])[:20],
+            "html_preview": (artifacts.get("html") or "")[:3000],
+        }
+        try:
+            await Actor.set_value(key, value)
+            print(f"[streeteasy] stored browser artifacts in key-value store: {key}")
+        except Exception as exc:
+            print(f"[streeteasy] failed to store browser artifacts for {url}: {exc}")
+
+    def _log_browser_artifacts(self, url: str, artifacts: dict) -> None:
+        print(
+            "[streeteasy] browser summary "
+            f"url={url} final_url={artifacts.get('final_url')} "
+            f"title={artifacts.get('title')!r} "
+            f"challenge_signals={artifacts.get('challenge_signals') or []}"
+        )
+        for response in artifacts.get("responses", [])[:8]:
+            preview = response.get("body_preview")
+            print(
+                "[streeteasy] browser response "
+                f"status={response.get('status')} "
+                f"type={response.get('resource_type')} "
+                f"url={response.get('url')} "
+                f"content_type={response.get('content_type')}"
+            )
+            if preview:
+                print(f"[streeteasy] browser body preview: {preview}")
+
+    def _session_id(self, url: str) -> str:
+        return re.sub(r"[^\w]+", "_", url)[:50]
 
 
 def _parse_price(text: str) -> int | None:
