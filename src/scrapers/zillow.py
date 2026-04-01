@@ -56,10 +56,11 @@ class ZillowScraper:
     async def scrape(self) -> list[dict]:
         zipcodes = self.criteria.get("zipcodes", [])
         if zipcodes:
-            urls = [self._zip_url(z) for z in zipcodes]
+            url_results = [await self._zip_url(z) for z in zipcodes]
         else:
-            urls = [self._slug_url(s) for s in self._get_slugs()]
+            url_results = [await self._slug_url(s) for s in self._get_slugs()]
 
+        urls = [u for u in url_results if u]
         if not urls:
             return []
 
@@ -174,14 +175,20 @@ class ZillowScraper:
             return [n.lower().replace(" ", "-") + "-new-york-ny" for n in neighborhoods]
         return [DEFAULT_SLUG]
 
-    def _zip_url(self, zipcode: str) -> str:
-        """Build a Zillow rentals URL with searchQueryState embedded.
-        maxcopell/zillow-scraper requires the searchQueryState query param."""
+    async def _zip_url(self, zipcode: str) -> str | None:
+        """Build a Zillow search URL with mapBounds from zippopotam geocoding.
+        maxcopell/zillow-scraper needs searchQueryState with mapBounds to return results."""
         import json
         from urllib.parse import urlencode
+        bounds = await _geocode_zip(zipcode)
+        if bounds is None:
+            print(f"[zillow] could not geocode {zipcode}, skipping")
+            return None
+        west, south, east, north = bounds
         sqs = {
             "pagination": {},
             "usersSearchTerm": zipcode,
+            "mapBounds": {"west": west, "east": east, "south": south, "north": north},
             "filterState": self._filter_state(),
             "isListVisible": True,
             "isMapVisible": False,
@@ -190,14 +197,20 @@ class ZillowScraper:
             {"searchQueryState": json.dumps(sqs, separators=(",", ":"))}
         )
 
-    def _slug_url(self, slug: str) -> str:
-        """Build a Zillow rentals URL with searchQueryState embedded."""
+    async def _slug_url(self, slug: str) -> str | None:
+        """Build a Zillow search URL with mapBounds from Nominatim geocoding."""
         import json
         from urllib.parse import urlencode
-        search_term = slug.replace("-", " ").title()
+        search_term = slug.replace("-new-york-ny", "").replace("-brooklyn-ny", "").replace("-", " ")
+        bounds = await _geocode_neighborhood(search_term + ", New York, NY")
+        if bounds is None:
+            print(f"[zillow] could not geocode slug {slug}, skipping")
+            return None
+        west, south, east, north = bounds
         sqs = {
             "pagination": {},
-            "usersSearchTerm": search_term,
+            "usersSearchTerm": search_term.title(),
+            "mapBounds": {"west": west, "east": east, "south": south, "north": north},
             "filterState": self._filter_state(),
             "isListVisible": True,
             "isMapVisible": False,
@@ -235,6 +248,57 @@ class ZillowScraper:
                 beds["max"] = max_beds
             state["beds"] = beds
         return state
+
+
+_GEOCODE_RADIUS = 0.02  # ~2km, same as padmapper
+
+_GEOCODE_HEADERS = {
+    "User-Agent": "aptsearch/1.0 (apartment search tool; contact via github)",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+async def _geocode_zip(zipcode: str) -> tuple[float, float, float, float] | None:
+    """Return (west, south, east, north) bounds for a US zip code via zippopotam.us."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"https://api.zippopotam.us/us/{zipcode}")
+        if resp.status_code != 200:
+            return None
+        places = resp.json().get("places") or []
+        if not places:
+            return None
+        lat = float(places[0]["latitude"])
+        lng = float(places[0]["longitude"])
+        r = _GEOCODE_RADIUS
+        return lng - r, lat - r, lng + r, lat + r
+    except Exception as e:
+        print(f"[zillow] geocode error for zip {zipcode}: {e}")
+        return None
+
+
+async def _geocode_neighborhood(query: str) -> tuple[float, float, float, float] | None:
+    """Return (west, south, east, north) bounds for a place name via Nominatim."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(headers=_GEOCODE_HEADERS, timeout=10) as client:
+            resp = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": query, "format": "jsonv2", "limit": 1},
+            )
+        if resp.status_code != 200:
+            return None
+        results = resp.json() or []
+        if not results:
+            return None
+        lat = float(results[0]["lat"])
+        lng = float(results[0]["lon"])
+        r = _GEOCODE_RADIUS
+        return lng - r, lat - r, lng + r, lat + r
+    except Exception as e:
+        print(f"[zillow] geocode error for '{query}': {e}")
+        return None
 
 
 def _parse_price(text: str) -> int | None:
