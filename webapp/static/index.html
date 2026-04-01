@@ -15,7 +15,6 @@
       --accent-hover: #1d4ed8;
       --text: #1a1a1a;
       --muted: #6b7280;
-      --danger: #dc2626;
       --success: #16a34a;
       --tag-bg: #eff6ff;
       --tag-text: #1d4ed8;
@@ -28,6 +27,46 @@
       font-size: 14px;
       line-height: 1.5;
     }
+
+    /* ── Setup screen ── */
+    #setup-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .setup-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .setup-card h1 { font-size: 22px; margin-bottom: 8px; }
+    .setup-card p { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+
+    .setup-card input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 12px;
+      outline: none;
+      font-family: monospace;
+    }
+
+    .setup-card input:focus { border-color: var(--accent); }
+
+    .setup-card a { color: var(--accent); font-size: 12px; display: block; margin-bottom: 20px; }
+
+    /* ── Main app ── */
+    #app { display: none; }
 
     header {
       background: var(--surface);
@@ -42,17 +81,37 @@
       z-index: 10;
     }
 
-    header h1 {
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: -0.01em;
+    header h1 { font-size: 16px; font-weight: 600; }
+
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+
+    .tabs {
+      display: flex;
+      gap: 2px;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 3px;
     }
+
+    .tab {
+      padding: 5px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+
+    .tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
     #run-btn {
       background: var(--accent);
       color: #fff;
       border: none;
-      padding: 8px 18px;
+      padding: 8px 16px;
       border-radius: 8px;
       font-size: 13px;
       font-weight: 500;
@@ -60,7 +119,6 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      transition: background 0.15s;
     }
 
     #run-btn:hover { background: var(--accent-hover); }
@@ -68,14 +126,12 @@
 
     .layout {
       display: flex;
-      gap: 0;
       min-height: calc(100vh - 56px);
     }
 
-    /* ── Sidebar ── */
     aside {
-      width: 300px;
-      min-width: 300px;
+      width: 290px;
+      min-width: 290px;
       background: var(--surface);
       border-right: 1px solid var(--border);
       padding: 20px;
@@ -94,7 +150,7 @@
       margin-bottom: 16px;
     }
 
-    .field { margin-bottom: 14px; }
+    .field { margin-bottom: 13px; }
 
     .field label {
       display: block;
@@ -117,11 +173,9 @@
       background: var(--bg);
       color: var(--text);
       outline: none;
-      transition: border-color 0.15s;
     }
 
-    .field input:focus,
-    .field select:focus { border-color: var(--accent); }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
 
     .field-row { display: flex; gap: 8px; }
     .field-row .field { flex: 1; }
@@ -136,7 +190,6 @@
       gap: 4px;
       min-height: 36px;
       cursor: text;
-      transition: border-color 0.15s;
     }
 
     .tag-input-wrap:focus-within { border-color: var(--accent); }
@@ -145,7 +198,7 @@
       background: var(--tag-bg);
       color: var(--tag-text);
       border-radius: 5px;
-      padding: 2px 8px;
+      padding: 2px 7px;
       font-size: 12px;
       font-weight: 500;
       display: flex;
@@ -153,43 +206,16 @@
       gap: 4px;
     }
 
-    .tag button {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--tag-text);
-      font-size: 14px;
-      line-height: 1;
-      padding: 0;
-      opacity: 0.6;
-    }
+    .tag button { background: none; border: none; cursor: pointer; color: var(--tag-text); font-size: 14px; line-height: 1; padding: 0; opacity: 0.6; }
     .tag button:hover { opacity: 1; }
 
-    .tag-input {
-      border: none;
-      background: transparent;
-      font-size: 13px;
-      outline: none;
-      flex: 1;
-      min-width: 80px;
-      color: var(--text);
-    }
+    .tag-input { border: none; background: transparent; font-size: 13px; outline: none; flex: 1; min-width: 60px; color: var(--text); }
 
-    .checkbox-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-
+    .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 13px; }
     .checkbox-row input[type="checkbox"] { width: 15px; height: 15px; }
-    .checkbox-row label { font-size: 13px; color: var(--text); cursor: pointer; }
+    .checkbox-row label { font-size: 13px; cursor: pointer; }
 
-    .divider {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 18px 0;
-    }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
     #save-btn {
       width: 100%;
@@ -201,37 +227,21 @@
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
-      transition: border-color 0.15s;
     }
 
     #save-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-    #save-status {
-      text-align: center;
-      font-size: 12px;
-      color: var(--success);
-      margin-top: 6px;
-      min-height: 16px;
-    }
+    #save-status { text-align: center; font-size: 12px; color: var(--success); margin-top: 6px; min-height: 16px; }
 
-    /* ── Main ── */
-    main {
-      flex: 1;
-      padding: 24px;
-      overflow-y: auto;
-    }
+    main { flex: 1; padding: 24px; overflow-y: auto; }
 
-    #status-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
+    /* ── Tabs ── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
 
-    #result-count {
-      font-size: 13px;
-      color: var(--muted);
-    }
+    /* ── Results ── */
+    #status-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    #result-count { font-size: 13px; color: var(--muted); }
 
     #run-status {
       font-size: 12px;
@@ -261,313 +271,351 @@
 
     .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
 
-    .card-img {
-      width: 100%;
-      height: 180px;
-      object-fit: cover;
-      background: var(--bg);
-      display: block;
-    }
-
-    .card-img-placeholder {
-      width: 100%;
-      height: 180px;
-      background: var(--bg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--muted);
-      font-size: 32px;
-    }
-
+    .card-img { width: 100%; height: 175px; object-fit: cover; background: var(--bg); display: block; }
+    .card-img-placeholder { width: 100%; height: 175px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 32px; }
     .card-body { padding: 14px; }
 
-    .card-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 4px;
-    }
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+    .card-price { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+    .card-rank { font-size: 11px; font-weight: 600; background: var(--accent); color: #fff; padding: 2px 7px; border-radius: 20px; }
+    .card-meta { font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+    .card-address { font-size: 12px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
 
-    .card-price {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .card-rank {
-      font-size: 11px;
-      font-weight: 600;
-      background: var(--accent);
-      color: #fff;
-      padding: 2px 7px;
-      border-radius: 20px;
-    }
-
-    .card-meta {
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-
-    .card-address {
-      font-size: 12px;
-      color: var(--text);
-      margin-bottom: 8px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .card-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      margin-bottom: 10px;
-    }
-
-    .badge {
-      font-size: 11px;
-      padding: 2px 7px;
-      border-radius: 5px;
-      font-weight: 500;
-    }
-
+    .badge { font-size: 11px; padding: 2px 7px; border-radius: 5px; font-weight: 500; }
     .badge-source { background: #f3f4f6; color: var(--muted); }
     .badge-pets   { background: #fef3c7; color: #92400e; }
     .badge-subway { background: #ede9fe; color: #5b21b6; }
 
-    .card-link {
-      display: block;
-      width: 100%;
-      text-align: center;
-      padding: 8px;
-      background: var(--bg);
-      border-radius: 7px;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--accent);
-      text-decoration: none;
-      transition: background 0.15s;
-    }
-
+    .card-link { display: block; width: 100%; text-align: center; padding: 8px; background: var(--bg); border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--accent); text-decoration: none; }
     .card-link:hover { background: var(--tag-bg); }
 
-    .empty-state {
-      text-align: center;
-      padding: 80px 20px;
-      color: var(--muted);
+    /* ── History ── */
+    .run-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .run-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: box-shadow 0.15s;
     }
 
+    .run-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+    .run-item-left { display: flex; flex-direction: column; gap: 3px; }
+    .run-date { font-size: 13px; font-weight: 500; }
+    .run-meta { font-size: 12px; color: var(--muted); }
+
+    .run-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+    .run-badge.SUCCEEDED { background: #dcfce7; color: #166534; }
+    .run-badge.FAILED { background: #fee2e2; color: #991b1b; }
+    .run-badge.RUNNING { background: #fef9c3; color: #92400e; }
+
+    .empty-state { text-align: center; padding: 80px 20px; color: var(--muted); }
     .empty-state p { margin-top: 8px; font-size: 13px; }
 
-    .spinner {
-      display: inline-block;
-      width: 14px;
-      height: 14px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
+    /* ── Email settings ── */
+    .settings-section { max-width: 480px; }
+    .settings-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .settings-section p { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+    .settings-row { display: flex; gap: 10px; align-items: flex-end; }
+    .settings-row .field { flex: 1; }
+    .settings-row button { padding: 7px 16px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .settings-row button:hover { border-color: var(--accent); color: var(--accent); }
 
+    .info-box { background: var(--tag-bg); border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #1e40af; margin-top: 16px; line-height: 1.6; }
+
+    /* ── Buttons ── */
+    .btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 
-<header>
-  <h1>🏠 Apt Search</h1>
-  <button id="run-btn" onclick="runNow()">
-    <span id="run-label">Run Now</span>
-  </button>
-</header>
+<!-- Setup screen -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <div style="font-size:48px;margin-bottom:16px">🏠</div>
+    <h1>Apt Search</h1>
+    <p>Enter your Apify API token to get started. It's stored locally in your browser — never sent anywhere except Apify.</p>
+    <input type="password" id="token-input" placeholder="apify_api_..." />
+    <a href="https://console.apify.com/settings/integrations" target="_blank">Get your token →</a>
+    <button class="btn btn-primary" style="width:100%" onclick="saveToken()">Continue</button>
+    <div id="token-error" style="color:#dc2626;font-size:12px;margin-top:8px"></div>
+  </div>
+</div>
 
-<div class="layout">
-  <!-- Sidebar -->
-  <aside>
-    <h2>Search Criteria</h2>
-
-    <div class="field">
-      <label>Daily Report Email</label>
-      <input type="email" id="f-email" placeholder="you@gmail.com" />
-    </div>
-
-    <hr class="divider" />
-
-    <div class="field">
-      <label>ZIP Codes <span style="font-weight:400">(press Enter to add)</span></label>
-      <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
-        <div id="zip-tags"></div>
-        <input class="tag-input" id="zip-input" placeholder="e.g. 11215"
-               onkeydown="handleTagKey(event, 'zipcodes')" />
+<!-- Main app -->
+<div id="app">
+  <header>
+    <h1>🏠 Apt Search</h1>
+    <div class="header-actions">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('results', this)">Results</button>
+        <button class="tab" onclick="switchTab('history', this)">History</button>
+        <button class="tab" onclick="switchTab('settings', this)">Settings</button>
       </div>
+      <button id="run-btn" onclick="runNow()">
+        <span id="run-label">Run Now</span>
+      </button>
     </div>
+  </header>
 
-    <div class="field">
-      <label>Neighborhoods <span style="font-weight:400">(press Enter to add)</span></label>
-      <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
-        <div id="neighborhood-tags"></div>
-        <input class="tag-input" id="neighborhood-input" placeholder="e.g. Astoria"
-               onkeydown="handleTagKey(event, 'neighborhoods')" />
-      </div>
-    </div>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside>
+      <h2>Search Criteria</h2>
 
-    <div class="field-row">
       <div class="field">
-        <label>Min Price</label>
-        <input type="number" id="f-min-price" placeholder="1500" />
+        <label>ZIP Codes <span style="font-weight:400">(Enter to add)</span></label>
+        <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
+          <div id="zip-tags"></div>
+          <input class="tag-input" id="zip-input" placeholder="e.g. 11215" onkeydown="handleTagKey(event,'zipcodes')" />
+        </div>
       </div>
+
       <div class="field">
-        <label>Max Price</label>
-        <input type="number" id="f-max-price" placeholder="3500" />
+        <label>Neighborhoods <span style="font-weight:400">(Enter to add)</span></label>
+        <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
+          <div id="neighborhood-tags"></div>
+          <input class="tag-input" id="neighborhood-input" placeholder="e.g. Astoria" onkeydown="handleTagKey(event,'neighborhoods')" />
+        </div>
       </div>
-    </div>
 
-    <div class="field">
-      <label>Target Price <span style="font-weight:400">(for ranking)</span></label>
-      <input type="number" id="f-target-price" placeholder="2500" />
-    </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Min $</label>
+          <input type="number" id="f-min-price" placeholder="1500" />
+        </div>
+        <div class="field">
+          <label>Max $</label>
+          <input type="number" id="f-max-price" placeholder="3500" />
+        </div>
+      </div>
 
-    <div class="field-row">
       <div class="field">
-        <label>Min Beds</label>
-        <input type="number" id="f-min-beds" value="1" min="0" />
+        <label>Target Price <span style="font-weight:400">(for ranking)</span></label>
+        <input type="number" id="f-target-price" placeholder="2500" />
       </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Min Beds</label>
+          <input type="number" id="f-min-beds" value="1" min="0" />
+        </div>
+        <div class="field">
+          <label>Max Beds</label>
+          <input type="number" id="f-max-beds" placeholder="any" />
+        </div>
+      </div>
+
       <div class="field">
-        <label>Max Beds</label>
-        <input type="number" id="f-max-beds" placeholder="any" />
+        <label>Min Bathrooms</label>
+        <input type="number" id="f-min-baths" value="1" min="1" step="0.5" />
       </div>
-    </div>
 
-    <div class="field">
-      <label>Min Bathrooms</label>
-      <input type="number" id="f-min-baths" value="1" min="1" step="0.5" />
-    </div>
-
-    <div class="field">
-      <label>Max Subway Distance (miles)</label>
-      <input type="number" id="f-subway-dist" value="0.5" step="0.1" min="0" />
-    </div>
-
-    <div class="field">
-      <label>Preferred Subway Lines <span style="font-weight:400">(press Enter)</span></label>
-      <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
-        <div id="subway-tags"></div>
-        <input class="tag-input" id="subway-input" placeholder="e.g. A, L, 1"
-               onkeydown="handleTagKey(event, 'preferred_subway_lines')" />
+      <div class="field">
+        <label>Max Subway Distance (mi)</label>
+        <input type="number" id="f-subway-dist" value="0.5" step="0.1" min="0" />
       </div>
-    </div>
 
-    <div class="field">
-      <label>Available Before</label>
-      <input type="date" id="f-avail-before" />
-    </div>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="f-pets" />
-      <label for="f-pets">Pets allowed</label>
-    </div>
-
-    <div class="field">
-      <label>Results per run</label>
-      <input type="number" id="f-results" value="20" min="1" max="50" />
-    </div>
-
-    <div class="field">
-      <label>Sites</label>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-top:2px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
-          <input type="checkbox" id="site-craigslist" checked /> Craigslist
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
-          <input type="checkbox" id="site-zillow" checked /> Zillow
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
-          <input type="checkbox" id="site-apartments_com" checked /> Apartments.com
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
-          <input type="checkbox" id="site-realtor" checked /> Realtor.com
-        </label>
+      <div class="field">
+        <label>Preferred Lines <span style="font-weight:400">(Enter to add)</span></label>
+        <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
+          <div id="subway-tags"></div>
+          <input class="tag-input" id="subway-input" placeholder="e.g. A, L, 1" onkeydown="handleTagKey(event,'preferred_subway_lines')" />
+        </div>
       </div>
-    </div>
 
-    <hr class="divider" />
+      <div class="field">
+        <label>Available Before</label>
+        <input type="date" id="f-avail-before" />
+      </div>
 
-    <button id="save-btn" onclick="savePrefs()">Save Preferences</button>
-    <div id="save-status"></div>
-  </aside>
+      <div class="checkbox-row">
+        <input type="checkbox" id="f-pets" />
+        <label for="f-pets">Pets allowed only</label>
+      </div>
 
-  <!-- Results -->
-  <main>
-    <div id="status-bar">
-      <div id="result-count">Loading...</div>
-      <div id="run-status" class="status-idle">Idle</div>
-    </div>
-    <div class="cards" id="cards"></div>
-  </main>
+      <div class="field">
+        <label>Results per run</label>
+        <input type="number" id="f-results" value="20" min="1" max="50" />
+      </div>
+
+      <div class="field">
+        <label>Sites</label>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:2px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-craigslist" checked /> Craigslist</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-zillow" checked /> Zillow</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-apartments_com" checked /> Apartments.com</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-realtor" checked /> Realtor.com</label>
+        </div>
+      </div>
+
+      <hr class="divider" />
+      <button id="save-btn" onclick="savePrefs()">Save Preferences</button>
+      <div id="save-status"></div>
+    </aside>
+
+    <!-- Main content -->
+    <main>
+      <!-- Results tab -->
+      <div id="tab-results" class="tab-panel active">
+        <div id="status-bar">
+          <div id="result-count">Loading...</div>
+          <div id="run-status" class="status-idle">Idle</div>
+        </div>
+        <div class="cards" id="cards"></div>
+      </div>
+
+      <!-- History tab -->
+      <div id="tab-history" class="tab-panel">
+        <div id="run-list" class="run-list"></div>
+      </div>
+
+      <!-- Settings tab -->
+      <div id="tab-settings" class="tab-panel">
+        <div class="settings-section">
+          <h3>Daily Report Email</h3>
+          <p>The daily digest will be sent to this address every morning at 8am CT.</p>
+          <div class="settings-row">
+            <div class="field">
+              <label>Email Address</label>
+              <input type="email" id="f-email" placeholder="you@gmail.com" />
+            </div>
+            <button onclick="saveEmail()">Save</button>
+          </div>
+
+          <hr class="divider" />
+
+          <h3>Apify Token</h3>
+          <p>Your token is stored in your browser's localStorage.</p>
+          <button class="btn" onclick="resetToken()">Reset Token</button>
+
+          <div class="info-box" style="margin-top:16px">
+            <strong>Daily runs</strong> happen automatically at 8am CT via a scheduled cloud agent — no computer required. Results show up here and in your Gmail drafts.
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
 </div>
 
 <script>
-  // ── State ──────────────────────────────────────────────────────────────────
+  const ACTOR_ID = 'jta93~aptsearch';
+  const APIFY = 'https://api.apify.com/v2';
+  const PREFS_STORE = '~apt-search-prefs'; // named KV store
+
   const tags = { zipcodes: [], neighborhoods: [], preferred_subway_lines: [] };
   let pollingInterval = null;
-  let currentRunId = null;
+  let token = localStorage.getItem('apify_token') || '';
 
-  // ── Tag inputs ─────────────────────────────────────────────────────────────
-  const tagContainerMap = {
-    zipcodes: 'zip-tags',
-    neighborhoods: 'neighborhood-tags',
-    preferred_subway_lines: 'subway-tags',
-  };
+  // ── Setup ───────────────────────────────────────────────────────────────────
+  function init() {
+    if (token) {
+      showApp();
+    } else {
+      document.getElementById('setup-screen').style.display = 'flex';
+    }
+  }
 
-  const tagInputMap = {
-    zipcodes: 'zip-input',
-    neighborhoods: 'neighborhood-input',
-    preferred_subway_lines: 'subway-input',
-  };
+  async function saveToken() {
+    const t = document.getElementById('token-input').value.trim();
+    if (!t) return;
+    // Quick validation
+    try {
+      const r = await fetch(`${APIFY}/acts/${ACTOR_ID}?token=${t}`);
+      if (!r.ok) throw new Error('Invalid token');
+      token = t;
+      localStorage.setItem('apify_token', t);
+      showApp();
+    } catch {
+      document.getElementById('token-error').textContent = 'Could not validate token — check it and try again.';
+    }
+  }
+
+  function resetToken() {
+    localStorage.removeItem('apify_token');
+    location.reload();
+  }
+
+  function showApp() {
+    document.getElementById('setup-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadPrefs();
+    loadLatestResults();
+  }
+
+  // ── Tabs ────────────────────────────────────────────────────────────────────
+  function switchTab(name, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(`tab-${name}`).classList.add('active');
+    btn.classList.add('active');
+    if (name === 'history') loadHistory();
+  }
+
+  // ── Tag inputs ───────────────────────────────────────────────────────────────
+  const tagContainers = { zipcodes: 'zip-tags', neighborhoods: 'neighborhood-tags', preferred_subway_lines: 'subway-tags' };
 
   function handleTagKey(e, field) {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
       const val = e.target.value.trim().replace(/,$/, '');
-      if (val && !tags[field].includes(val)) {
-        tags[field].push(val);
-        renderTags(field);
-      }
+      if (val && !tags[field].includes(val)) { tags[field].push(val); renderTags(field); }
       e.target.value = '';
-    } else if (e.key === 'Backspace' && e.target.value === '' && tags[field].length) {
-      tags[field].pop();
-      renderTags(field);
+    } else if (e.key === 'Backspace' && !e.target.value && tags[field].length) {
+      tags[field].pop(); renderTags(field);
     }
   }
 
   function renderTags(field) {
-    const container = document.getElementById(tagContainerMap[field]);
-    container.innerHTML = '';
-    tags[field].forEach((val, i) => {
-      const tag = document.createElement('span');
-      tag.className = 'tag';
-      tag.innerHTML = `${val}<button onclick="removeTag('${field}',${i})">×</button>`;
-      container.appendChild(tag);
+    const c = document.getElementById(tagContainers[field]);
+    c.innerHTML = '';
+    tags[field].forEach((v, i) => {
+      const t = document.createElement('span');
+      t.className = 'tag';
+      t.innerHTML = `${v}<button onclick="removeTag('${field}',${i})">×</button>`;
+      c.appendChild(t);
     });
   }
 
-  function removeTag(field, i) {
-    tags[field].splice(i, 1);
-    renderTags(field);
+  function removeTag(field, i) { tags[field].splice(i, 1); renderTags(field); }
+
+  function setTags(field, values) { tags[field] = values || []; renderTags(field); }
+
+  // ── Preferences ─────────────────────────────────────────────────────────────
+  function buildPrefs() {
+    const sites = ['craigslist','zillow','apartments_com','realtor'].filter(s => document.getElementById(`site-${s}`).checked);
+    return {
+      email: document.getElementById('f-email').value.trim(),
+      zipcodes: tags.zipcodes,
+      neighborhoods: tags.neighborhoods,
+      min_price: parseInt(document.getElementById('f-min-price').value) || null,
+      max_price: parseInt(document.getElementById('f-max-price').value) || null,
+      target_price: parseInt(document.getElementById('f-target-price').value) || null,
+      min_bedrooms: parseInt(document.getElementById('f-min-beds').value) ?? 1,
+      max_bedrooms: parseInt(document.getElementById('f-max-beds').value) || null,
+      min_bathrooms: parseFloat(document.getElementById('f-min-baths').value) || 1,
+      max_subway_distance_miles: parseFloat(document.getElementById('f-subway-dist').value) || 0.5,
+      preferred_subway_lines: tags.preferred_subway_lines,
+      availability_before: document.getElementById('f-avail-before').value || null,
+      pets_allowed: document.getElementById('f-pets').checked,
+      results_per_run: parseInt(document.getElementById('f-results').value) || 20,
+      sites,
+    };
   }
 
-  function setTags(field, values) {
-    tags[field] = values || [];
-    renderTags(field);
-  }
-
-  // ── Load preferences ───────────────────────────────────────────────────────
-  async function loadPrefs() {
-    const r = await fetch('/api/preferences');
-    const p = await r.json();
-
+  function applyPrefs(p) {
     document.getElementById('f-email').value = p.email || '';
     document.getElementById('f-min-price').value = p.min_price || '';
     document.getElementById('f-max-price').value = p.max_price || '';
@@ -579,78 +627,82 @@
     document.getElementById('f-avail-before').value = p.availability_before || '';
     document.getElementById('f-pets').checked = p.pets_allowed || false;
     document.getElementById('f-results').value = p.results_per_run || 20;
-
     setTags('zipcodes', p.zipcodes);
     setTags('neighborhoods', p.neighborhoods);
     setTags('preferred_subway_lines', p.preferred_subway_lines);
-
     const sites = p.sites || [];
-    ['craigslist', 'zillow', 'apartments_com', 'realtor'].forEach(s => {
+    ['craigslist','zillow','apartments_com','realtor'].forEach(s => {
       document.getElementById(`site-${s}`).checked = sites.includes(s);
     });
   }
 
-  // ── Save preferences ───────────────────────────────────────────────────────
+  async function loadPrefs() {
+    // Try Apify KV store first, fall back to localStorage
+    try {
+      const r = await apifyGet(`/key-value-stores/${PREFS_STORE}/records/prefs`);
+      if (r.ok) { applyPrefs(await r.json()); return; }
+    } catch {}
+    const local = localStorage.getItem('apt_prefs');
+    if (local) applyPrefs(JSON.parse(local));
+  }
+
   async function savePrefs() {
-    const sites = ['craigslist', 'zillow', 'apartments_com', 'realtor']
-      .filter(s => document.getElementById(`site-${s}`).checked);
+    const prefs = buildPrefs();
+    localStorage.setItem('apt_prefs', JSON.stringify(prefs));
 
-    const prefs = {
-      email: document.getElementById('f-email').value.trim(),
-      zipcodes: tags.zipcodes,
-      neighborhoods: tags.neighborhoods,
-      min_price: parseInt(document.getElementById('f-min-price').value) || null,
-      max_price: parseInt(document.getElementById('f-max-price').value) || null,
-      target_price: parseInt(document.getElementById('f-target-price').value) || null,
-      min_bedrooms: parseInt(document.getElementById('f-min-beds').value) || 1,
-      max_bedrooms: parseInt(document.getElementById('f-max-beds').value) || null,
-      min_bathrooms: parseFloat(document.getElementById('f-min-baths').value) || 1,
-      max_subway_distance_miles: parseFloat(document.getElementById('f-subway-dist').value) || 0.5,
-      preferred_subway_lines: tags.preferred_subway_lines,
-      availability_before: document.getElementById('f-avail-before').value || null,
-      pets_allowed: document.getElementById('f-pets').checked,
-      results_per_run: parseInt(document.getElementById('f-results').value) || 20,
-      sites,
-    };
+    // Save to Apify KV store so the daily agent can read them
+    try {
+      await fetch(`${APIFY}/key-value-stores/${PREFS_STORE}/records/prefs?token=${token}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefs),
+      });
+    } catch {}
 
-    await fetch('/api/preferences', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(prefs) });
     const s = document.getElementById('save-status');
     s.textContent = '✓ Saved';
     setTimeout(() => s.textContent = '', 2000);
   }
 
-  // ── Run ────────────────────────────────────────────────────────────────────
-  async function runNow() {
-    await savePrefs();
-    setRunStatus('running', 'Running…');
-    document.getElementById('run-btn').disabled = true;
-    document.getElementById('run-label').innerHTML = '<span class="spinner"></span> Running';
-
-    const r = await fetch('/api/run', { method: 'POST' });
-    if (!r.ok) {
-      setRunStatus('error', 'Error');
-      resetRunBtn();
-      return;
-    }
-
-    const { run_id } = await r.json();
-    currentRunId = run_id;
-    pollingInterval = setInterval(() => pollRun(run_id), 4000);
+  function saveEmail() {
+    savePrefs();
   }
 
-  async function pollRun(run_id) {
-    const r = await fetch(`/api/run/${run_id}/status`);
-    const { status } = await r.json();
+  // ── Apify helpers ───────────────────────────────────────────────────────────
+  function apifyGet(path) {
+    return fetch(`${APIFY}${path}?token=${token}`);
+  }
 
-    if (status === 'SUCCEEDED') {
+  // ── Run ─────────────────────────────────────────────────────────────────────
+  async function runNow() {
+    await savePrefs();
+    const prefs = buildPrefs();
+    const input = { ...prefs };
+    delete input.email;
+
+    setRunStatus('running', 'Running…');
+    document.getElementById('run-btn').disabled = true;
+    document.getElementById('run-label').innerHTML = '<span class="spinner"></span>';
+
+    const r = await fetch(`${APIFY}/acts/${ACTOR_ID}/runs?token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input }),
+    });
+
+    if (!r.ok) { setRunStatus('error', 'Error'); resetRunBtn(); return; }
+    const { data } = await r.json();
+    pollingInterval = setInterval(() => pollRun(data.id), 4000);
+  }
+
+  async function pollRun(runId) {
+    const r = await apifyGet(`/actor-runs/${runId}`);
+    const { data } = await r.json();
+    if (['SUCCEEDED','FAILED','ABORTED','TIMED-OUT'].includes(data.status)) {
       clearInterval(pollingInterval);
-      setRunStatus('done', 'Done');
+      setRunStatus(data.status === 'SUCCEEDED' ? 'done' : 'error', data.status === 'SUCCEEDED' ? 'Done' : data.status);
       resetRunBtn();
-      loadResults(run_id);
-    } else if (['FAILED', 'ABORTED', 'TIMED-OUT'].includes(status)) {
-      clearInterval(pollingInterval);
-      setRunStatus('error', status);
-      resetRunBtn();
+      if (data.status === 'SUCCEEDED') loadResultsFromDataset(data.defaultDatasetId);
     }
   }
 
@@ -665,81 +717,83 @@
     document.getElementById('run-label').textContent = 'Run Now';
   }
 
-  // ── Results ────────────────────────────────────────────────────────────────
+  // ── Results ─────────────────────────────────────────────────────────────────
   async function loadLatestResults() {
-    const r = await fetch('/api/results/latest');
-    const { items, status } = await r.json();
-    renderResults(items || []);
-    if (status && status !== 'no runs yet') {
-      setRunStatus(status === 'SUCCEEDED' ? 'done' : 'idle', status === 'SUCCEEDED' ? 'Done' : status);
-    }
+    try {
+      const r = await apifyGet(`/acts/${ACTOR_ID}/runs/last`);
+      if (!r.ok) { renderResults([]); return; }
+      const { data } = await r.json();
+      if (data.status === 'RUNNING') {
+        setRunStatus('running', 'Running…');
+        pollingInterval = setInterval(() => pollRun(data.id), 4000);
+      } else if (data.status === 'SUCCEEDED') {
+        setRunStatus('done', 'Done');
+        loadResultsFromDataset(data.defaultDatasetId);
+        return;
+      }
+      renderResults([]);
+    } catch { renderResults([]); }
   }
 
-  async function loadResults(run_id) {
-    const r = await fetch(`/api/run/${run_id}/results`);
-    const { items } = await r.json();
-    renderResults(items || []);
+  async function loadResultsFromDataset(datasetId) {
+    const r = await apifyGet(`/datasets/${datasetId}/items`);
+    renderResults(await r.json());
   }
 
   function renderResults(items) {
     const cards = document.getElementById('cards');
-    const count = document.getElementById('result-count');
-
-    count.textContent = items.length ? `${items.length} listing${items.length !== 1 ? 's' : ''}` : 'No results';
+    document.getElementById('result-count').textContent = items.length ? `${items.length} listing${items.length !== 1 ? 's' : ''}` : 'No results yet';
 
     if (!items.length) {
-      cards.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
-        <div style="font-size:48px">🏘️</div>
-        <p>No results yet — hit <strong>Run Now</strong> to search.</p>
-      </div>`;
+      cards.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div style="font-size:48px">🏘️</div><p>No results yet — hit <strong>Run Now</strong> to search.</p></div>`;
       return;
     }
-
-    cards.innerHTML = items.map(item => cardHTML(item)).join('');
+    cards.innerHTML = items.map(cardHTML).join('');
   }
 
   function cardHTML(item) {
     const price = item.price ? `$${item.price.toLocaleString()}/mo` : 'Price N/A';
-    const meta = [
-      item.bedrooms != null ? `${item.bedrooms === 0 ? 'Studio' : item.bedrooms + ' bd'}` : null,
-      item.bathrooms != null ? `${item.bathrooms} ba` : null,
-    ].filter(Boolean).join(' · ');
-
+    const meta = [item.bedrooms != null ? (item.bedrooms === 0 ? 'Studio' : `${item.bedrooms} bd`) : null, item.bathrooms != null ? `${item.bathrooms} ba` : null].filter(Boolean).join(' · ');
     const sourceLabel = { craigslist: 'Craigslist', zillow: 'Zillow', apartments_com: 'Apartments.com', realtor: 'Realtor.com' };
-
-    const img = item.image_url
-      ? `<img class="card-img" src="${item.image_url}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="card-img-placeholder" style="display:none">🏠</div>`
-      : `<div class="card-img-placeholder">🏠</div>`;
-
-    const subwayBadge = item.nearest_subway
-      ? `<span class="badge badge-subway">🚇 ${item.nearest_subway} (${item.subway_distance_miles?.toFixed(2)} mi)</span>`
-      : '';
-
-    const petsBadge = item.pets_allowed === true ? `<span class="badge badge-pets">🐾 Pets OK</span>` : '';
-
-    return `
-      <div class="card">
-        ${img}
-        <div class="card-body">
-          <div class="card-top">
-            <div class="card-price">${price}</div>
-            <div class="card-rank">#${item.rank}</div>
-          </div>
-          <div class="card-meta">${meta || '—'}</div>
-          <div class="card-address" title="${item.address || ''}">${item.address || item.title || '—'}</div>
-          <div class="card-tags">
-            <span class="badge badge-source">${sourceLabel[item.source] || item.source}</span>
-            ${petsBadge}
-            ${subwayBadge}
-          </div>
-          <a class="card-link" href="${item.url}" target="_blank" rel="noopener">View Listing →</a>
-        </div>
-      </div>`;
+    const img = item.image_url ? `<img class="card-img" src="${item.image_url}" loading="lazy" onerror="this.style.display='none'" />`  : `<div class="card-img-placeholder">🏠</div>`;
+    const subway = item.nearest_subway ? `<span class="badge badge-subway">🚇 ${item.nearest_subway} (${item.subway_distance_miles?.toFixed(2)} mi)</span>` : '';
+    const pets = item.pets_allowed === true ? `<span class="badge badge-pets">🐾 Pets OK</span>` : '';
+    return `<div class="card">${img}<div class="card-body"><div class="card-top"><div class="card-price">${price}</div><div class="card-rank">#${item.rank}</div></div><div class="card-meta">${meta || '—'}</div><div class="card-address" title="${item.address||''}">${item.address || item.title || '—'}</div><div class="card-tags"><span class="badge badge-source">${sourceLabel[item.source]||item.source}</span>${pets}${subway}</div><a class="card-link" href="${item.url}" target="_blank" rel="noopener">View Listing →</a></div></div>`;
   }
 
-  // ── Init ───────────────────────────────────────────────────────────────────
-  loadPrefs();
-  loadLatestResults();
+  // ── History ──────────────────────────────────────────────────────────────────
+  async function loadHistory() {
+    const list = document.getElementById('run-list');
+    list.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
+    try {
+      const r = await apifyGet(`/acts/${ACTOR_ID}/runs?limit=20&desc=1`);
+      const { data } = await r.json();
+      const runs = data.items || [];
+      if (!runs.length) { list.innerHTML = '<div class="empty-state"><div style="font-size:48px">📋</div><p>No runs yet.</p></div>'; return; }
+      list.innerHTML = runs.map(run => {
+        const date = new Date(run.startedAt).toLocaleString();
+        const duration = run.finishedAt ? Math.round((new Date(run.finishedAt) - new Date(run.startedAt)) / 1000) + 's' : '—';
+        const statusClass = run.status === 'SUCCEEDED' ? 'SUCCEEDED' : run.status === 'RUNNING' ? 'RUNNING' : 'FAILED';
+        return `<div class="run-item" onclick="viewRun('${run.defaultDatasetId}','${run.status}')">
+          <div class="run-item-left">
+            <div class="run-date">${date}</div>
+            <div class="run-meta">Duration: ${duration}</div>
+          </div>
+          <span class="run-badge ${statusClass}">${run.status}</span>
+        </div>`;
+      }).join('');
+    } catch { list.innerHTML = '<div class="empty-state"><p>Could not load history.</p></div>'; }
+  }
+
+  function viewRun(datasetId, status) {
+    if (status !== 'SUCCEEDED' || !datasetId) return;
+    switchTab('results', document.querySelector('.tab'));
+    document.querySelectorAll('.tab')[0].classList.add('active');
+    document.querySelectorAll('.tab')[1].classList.remove('active');
+    loadResultsFromDataset(datasetId);
+  }
+
+  init();
 </script>
 </body>
 </html>
