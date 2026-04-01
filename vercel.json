@@ -1,0 +1,11 @@
+{
+  "outputDirectory": "webapp/static",
+  "functions": {
+    "api/apify.js": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/apify", "destination": "/api/apify" }
+  ]
+}
