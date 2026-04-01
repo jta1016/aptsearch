@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apt Search</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f7f7f5;
+      --surface: #ffffff;
+      --border: #e5e5e3;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --text: #1a1a1a;
+      --muted: #6b7280;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --tag-bg: #eff6ff;
+      --tag-text: #1d4ed8;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    #run-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s;
+    }
+
+    #run-btn:hover { background: var(--accent-hover); }
+    #run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .layout {
+      display: flex;
+      gap: 0;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* ── Sidebar ── */
+    aside {
+      width: 300px;
+      min-width: 300px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 20px;
+      overflow-y: auto;
+      position: sticky;
+      top: 56px;
+      height: calc(100vh - 56px);
+    }
+
+    aside h2 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .field { margin-bottom: 14px; }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .field input[type="text"],
+    .field input[type="email"],
+    .field input[type="number"],
+    .field input[type="date"],
+    .field select {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field input:focus,
+    .field select:focus { border-color: var(--accent); }
+
+    .field-row { display: flex; gap: 8px; }
+    .field-row .field { flex: 1; }
+
+    .tag-input-wrap {
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--bg);
+      padding: 5px 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-height: 36px;
+      cursor: text;
+      transition: border-color 0.15s;
+    }
+
+    .tag-input-wrap:focus-within { border-color: var(--accent); }
+
+    .tag {
+      background: var(--tag-bg);
+      color: var(--tag-text);
+      border-radius: 5px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .tag button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--tag-text);
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      opacity: 0.6;
+    }
+    .tag button:hover { opacity: 1; }
+
+    .tag-input {
+      border: none;
+      background: transparent;
+      font-size: 13px;
+      outline: none;
+      flex: 1;
+      min-width: 80px;
+      color: var(--text);
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .checkbox-row input[type="checkbox"] { width: 15px; height: 15px; }
+    .checkbox-row label { font-size: 13px; color: var(--text); cursor: pointer; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 18px 0;
+    }
+
+    #save-btn {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    #save-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    #save-status {
+      text-align: center;
+      font-size: 12px;
+      color: var(--success);
+      margin-top: 6px;
+      min-height: 16px;
+    }
+
+    /* ── Main ── */
+    main {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    #status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    #result-count {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    #run-status {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+
+    .status-running { background: #fef9c3; color: #92400e; }
+    .status-done    { background: #dcfce7; color: #166534; }
+    .status-error   { background: #fee2e2; color: #991b1b; }
+    .status-idle    { background: var(--border); color: var(--muted); }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: box-shadow 0.15s;
+    }
+
+    .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+
+    .card-img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      background: var(--bg);
+      display: block;
+    }
+
+    .card-img-placeholder {
+      width: 100%;
+      height: 180px;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 32px;
+    }
+
+    .card-body { padding: 14px; }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 4px;
+    }
+
+    .card-price {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .card-rank {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--accent);
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 20px;
+    }
+
+    .card-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .card-address {
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-weight: 500;
+    }
+
+    .badge-source { background: #f3f4f6; color: var(--muted); }
+    .badge-pets   { background: #fef3c7; color: #92400e; }
+    .badge-subway { background: #ede9fe; color: #5b21b6; }
+
+    .card-link {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding: 8px;
+      background: var(--bg);
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--accent);
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+
+    .card-link:hover { background: var(--tag-bg); }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--muted);
+    }
+
+    .empty-state p { margin-top: 8px; font-size: 13px; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🏠 Apt Search</h1>
+  <button id="run-btn" onclick="runNow()">
+    <span id="run-label">Run Now</span>
+  </button>
+</header>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside>
+    <h2>Search Criteria</h2>
+
+    <div class="field">
+      <label>Daily Report Email</label>
+      <input type="email" id="f-email" placeholder="you@gmail.com" />
+    </div>
+
+    <hr class="divider" />
+
+    <div class="field">
+      <label>ZIP Codes <span style="font-weight:400">(press Enter to add)</span></label>
+      <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
+        <div id="zip-tags"></div>
+        <input class="tag-input" id="zip-input" placeholder="e.g. 11215"
+               onkeydown="handleTagKey(event, 'zipcodes')" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Neighborhoods <span style="font-weight:400">(press Enter to add)</span></label>
+      <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
+        <div id="neighborhood-tags"></div>
+        <input class="tag-input" id="neighborhood-input" placeholder="e.g. Astoria"
+               onkeydown="handleTagKey(event, 'neighborhoods')" />
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Min Price</label>
+        <input type="number" id="f-min-price" placeholder="1500" />
+      </div>
+      <div class="field">
+        <label>Max Price</label>
+        <input type="number" id="f-max-price" placeholder="3500" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Target Price <span style="font-weight:400">(for ranking)</span></label>
+      <input type="number" id="f-target-price" placeholder="2500" />
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Min Beds</label>
+        <input type="number" id="f-min-beds" value="1" min="0" />
+      </div>
+      <div class="field">
+        <label>Max Beds</label>
+        <input type="number" id="f-max-beds" placeholder="any" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Min Bathrooms</label>
+      <input type="number" id="f-min-baths" value="1" min="1" step="0.5" />
+    </div>
+
+    <div class="field">
+      <label>Max Subway Distance (miles)</label>
+      <input type="number" id="f-subway-dist" value="0.5" step="0.1" min="0" />
+    </div>
+
+    <div class="field">
+      <label>Preferred Subway Lines <span style="font-weight:400">(press Enter)</span></label>
+      <div class="tag-input-wrap" onclick="this.querySelector('input').focus()">
+        <div id="subway-tags"></div>
+        <input class="tag-input" id="subway-input" placeholder="e.g. A, L, 1"
+               onkeydown="handleTagKey(event, 'preferred_subway_lines')" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Available Before</label>
+      <input type="date" id="f-avail-before" />
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="f-pets" />
+      <label for="f-pets">Pets allowed</label>
+    </div>
+
+    <div class="field">
+      <label>Results per run</label>
+      <input type="number" id="f-results" value="20" min="1" max="50" />
+    </div>
+
+    <div class="field">
+      <label>Sites</label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:2px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="site-craigslist" checked /> Craigslist
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="site-zillow" checked /> Zillow
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="site-apartments_com" checked /> Apartments.com
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="site-realtor" checked /> Realtor.com
+        </label>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <button id="save-btn" onclick="savePrefs()">Save Preferences</button>
+    <div id="save-status"></div>
+  </aside>
+
+  <!-- Results -->
+  <main>
+    <div id="status-bar">
+      <div id="result-count">Loading...</div>
+      <div id="run-status" class="status-idle">Idle</div>
+    </div>
+    <div class="cards" id="cards"></div>
+  </main>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  const tags = { zipcodes: [], neighborhoods: [], preferred_subway_lines: [] };
+  let pollingInterval = null;
+  let currentRunId = null;
+
+  // ── Tag inputs ─────────────────────────────────────────────────────────────
+  const tagContainerMap = {
+    zipcodes: 'zip-tags',
+    neighborhoods: 'neighborhood-tags',
+    preferred_subway_lines: 'subway-tags',
+  };
+
+  const tagInputMap = {
+    zipcodes: 'zip-input',
+    neighborhoods: 'neighborhood-input',
+    preferred_subway_lines: 'subway-input',
+  };
+
+  function handleTagKey(e, field) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const val = e.target.value.trim().replace(/,$/, '');
+      if (val && !tags[field].includes(val)) {
+        tags[field].push(val);
+        renderTags(field);
+      }
+      e.target.value = '';
+    } else if (e.key === 'Backspace' && e.target.value === '' && tags[field].length) {
+      tags[field].pop();
+      renderTags(field);
+    }
+  }
+
+  function renderTags(field) {
+    const container = document.getElementById(tagContainerMap[field]);
+    container.innerHTML = '';
+    tags[field].forEach((val, i) => {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.innerHTML = `${val}<button onclick="removeTag('${field}',${i})">×</button>`;
+      container.appendChild(tag);
+    });
+  }
+
+  function removeTag(field, i) {
+    tags[field].splice(i, 1);
+    renderTags(field);
+  }
+
+  function setTags(field, values) {
+    tags[field] = values || [];
+    renderTags(field);
+  }
+
+  // ── Load preferences ───────────────────────────────────────────────────────
+  async function loadPrefs() {
+    const r = await fetch('/api/preferences');
+    const p = await r.json();
+
+    document.getElementById('f-email').value = p.email || '';
+    document.getElementById('f-min-price').value = p.min_price || '';
+    document.getElementById('f-max-price').value = p.max_price || '';
+    document.getElementById('f-target-price').value = p.target_price || '';
+    document.getElementById('f-min-beds').value = p.min_bedrooms ?? 1;
+    document.getElementById('f-max-beds').value = p.max_bedrooms || '';
+    document.getElementById('f-min-baths').value = p.min_bathrooms ?? 1;
+    document.getElementById('f-subway-dist').value = p.max_subway_distance_miles ?? 0.5;
+    document.getElementById('f-avail-before').value = p.availability_before || '';
+    document.getElementById('f-pets').checked = p.pets_allowed || false;
+    document.getElementById('f-results').value = p.results_per_run || 20;
+
+    setTags('zipcodes', p.zipcodes);
+    setTags('neighborhoods', p.neighborhoods);
+    setTags('preferred_subway_lines', p.preferred_subway_lines);
+
+    const sites = p.sites || [];
+    ['craigslist', 'zillow', 'apartments_com', 'realtor'].forEach(s => {
+      document.getElementById(`site-${s}`).checked = sites.includes(s);
+    });
+  }
+
+  // ── Save preferences ───────────────────────────────────────────────────────
+  async function savePrefs() {
+    const sites = ['craigslist', 'zillow', 'apartments_com', 'realtor']
+      .filter(s => document.getElementById(`site-${s}`).checked);
+
+    const prefs = {
+      email: document.getElementById('f-email').value.trim(),
+      zipcodes: tags.zipcodes,
+      neighborhoods: tags.neighborhoods,
+      min_price: parseInt(document.getElementById('f-min-price').value) || null,
+      max_price: parseInt(document.getElementById('f-max-price').value) || null,
+      target_price: parseInt(document.getElementById('f-target-price').value) || null,
+      min_bedrooms: parseInt(document.getElementById('f-min-beds').value) || 1,
+      max_bedrooms: parseInt(document.getElementById('f-max-beds').value) || null,
+      min_bathrooms: parseFloat(document.getElementById('f-min-baths').value) || 1,
+      max_subway_distance_miles: parseFloat(document.getElementById('f-subway-dist').value) || 0.5,
+      preferred_subway_lines: tags.preferred_subway_lines,
+      availability_before: document.getElementById('f-avail-before').value || null,
+      pets_allowed: document.getElementById('f-pets').checked,
+      results_per_run: parseInt(document.getElementById('f-results').value) || 20,
+      sites,
+    };
+
+    await fetch('/api/preferences', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(prefs) });
+    const s = document.getElementById('save-status');
+    s.textContent = '✓ Saved';
+    setTimeout(() => s.textContent = '', 2000);
+  }
+
+  // ── Run ────────────────────────────────────────────────────────────────────
+  async function runNow() {
+    await savePrefs();
+    setRunStatus('running', 'Running…');
+    document.getElementById('run-btn').disabled = true;
+    document.getElementById('run-label').innerHTML = '<span class="spinner"></span> Running';
+
+    const r = await fetch('/api/run', { method: 'POST' });
+    if (!r.ok) {
+      setRunStatus('error', 'Error');
+      resetRunBtn();
+      return;
+    }
+
+    const { run_id } = await r.json();
+    currentRunId = run_id;
+    pollingInterval = setInterval(() => pollRun(run_id), 4000);
+  }
+
+  async function pollRun(run_id) {
+    const r = await fetch(`/api/run/${run_id}/status`);
+    const { status } = await r.json();
+
+    if (status === 'SUCCEEDED') {
+      clearInterval(pollingInterval);
+      setRunStatus('done', 'Done');
+      resetRunBtn();
+      loadResults(run_id);
+    } else if (['FAILED', 'ABORTED', 'TIMED-OUT'].includes(status)) {
+      clearInterval(pollingInterval);
+      setRunStatus('error', status);
+      resetRunBtn();
+    }
+  }
+
+  function setRunStatus(type, label) {
+    const el = document.getElementById('run-status');
+    el.textContent = label;
+    el.className = `status-${type}`;
+  }
+
+  function resetRunBtn() {
+    document.getElementById('run-btn').disabled = false;
+    document.getElementById('run-label').textContent = 'Run Now';
+  }
+
+  // ── Results ────────────────────────────────────────────────────────────────
+  async function loadLatestResults() {
+    const r = await fetch('/api/results/latest');
+    const { items, status } = await r.json();
+    renderResults(items || []);
+    if (status && status !== 'no runs yet') {
+      setRunStatus(status === 'SUCCEEDED' ? 'done' : 'idle', status === 'SUCCEEDED' ? 'Done' : status);
+    }
+  }
+
+  async function loadResults(run_id) {
+    const r = await fetch(`/api/run/${run_id}/results`);
+    const { items } = await r.json();
+    renderResults(items || []);
+  }
+
+  function renderResults(items) {
+    const cards = document.getElementById('cards');
+    const count = document.getElementById('result-count');
+
+    count.textContent = items.length ? `${items.length} listing${items.length !== 1 ? 's' : ''}` : 'No results';
+
+    if (!items.length) {
+      cards.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <div style="font-size:48px">🏘️</div>
+        <p>No results yet — hit <strong>Run Now</strong> to search.</p>
+      </div>`;
+      return;
+    }
+
+    cards.innerHTML = items.map(item => cardHTML(item)).join('');
+  }
+
+  function cardHTML(item) {
+    const price = item.price ? `$${item.price.toLocaleString()}/mo` : 'Price N/A';
+    const meta = [
+      item.bedrooms != null ? `${item.bedrooms === 0 ? 'Studio' : item.bedrooms + ' bd'}` : null,
+      item.bathrooms != null ? `${item.bathrooms} ba` : null,
+    ].filter(Boolean).join(' · ');
+
+    const sourceLabel = { craigslist: 'Craigslist', zillow: 'Zillow', apartments_com: 'Apartments.com', realtor: 'Realtor.com' };
+
+    const img = item.image_url
+      ? `<img class="card-img" src="${item.image_url}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="card-img-placeholder" style="display:none">🏠</div>`
+      : `<div class="card-img-placeholder">🏠</div>`;
+
+    const subwayBadge = item.nearest_subway
+      ? `<span class="badge badge-subway">🚇 ${item.nearest_subway} (${item.subway_distance_miles?.toFixed(2)} mi)</span>`
+      : '';
+
+    const petsBadge = item.pets_allowed === true ? `<span class="badge badge-pets">🐾 Pets OK</span>` : '';
+
+    return `
+      <div class="card">
+        ${img}
+        <div class="card-body">
+          <div class="card-top">
+            <div class="card-price">${price}</div>
+            <div class="card-rank">#${item.rank}</div>
+          </div>
+          <div class="card-meta">${meta || '—'}</div>
+          <div class="card-address" title="${item.address || ''}">${item.address || item.title || '—'}</div>
+          <div class="card-tags">
+            <span class="badge badge-source">${sourceLabel[item.source] || item.source}</span>
+            ${petsBadge}
+            ${subwayBadge}
+          </div>
+          <a class="card-link" href="${item.url}" target="_blank" rel="noopener">View Listing →</a>
+        </div>
+      </div>`;
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  loadPrefs();
+  loadLatestResults();
+</script>
+</body>
+</html>

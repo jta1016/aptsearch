@@ -1,19 +1,9 @@
 """
-Apartments.com scraper using their internal search API.
+Apartments.com scraper using Playwright to intercept their internal search API.
+Direct API calls get 403'd — navigating a real browser session works.
 """
-import json
 import re
-import httpx
-from bs4 import BeautifulSoup
-
-SEARCH_URL = "https://www.apartments.com/services/search/"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Referer": "https://www.apartments.com/",
-    "Origin": "https://www.apartments.com",
-    "Content-Type": "application/json",
-}
+from playwright.async_api import async_playwright
 
 
 class ApartmentsComScraper:
@@ -22,15 +12,23 @@ class ApartmentsComScraper:
 
     async def scrape(self) -> list[dict]:
         listings = []
-        targets = self._build_targets()
+        urls = self._build_urls()
 
-        async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-            for params in targets:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+            )
+
+            for url in urls:
                 try:
-                    results = await self._search(client, params)
+                    results = await self._scrape_page(context, url)
                     listings.extend(results)
                 except Exception as e:
-                    print(f"[apartments.com] error: {e}")
+                    print(f"[apartments.com] error for {url}: {e}")
+
+            await browser.close()
 
         seen = set()
         unique = []
@@ -40,47 +38,73 @@ class ApartmentsComScraper:
                 unique.append(l)
         return unique
 
-    def _build_targets(self) -> list[dict]:
-        base = {
-            "ptAmenities": [],
-            "coAmenities": [],
-        }
-        if self.criteria.get("min_price"):
-            base["minRent"] = self.criteria["min_price"]
-        if self.criteria.get("max_price"):
-            base["maxRent"] = self.criteria["max_price"]
-        if self.criteria.get("min_bedrooms") is not None:
-            base["minBeds"] = self.criteria["min_bedrooms"]
-        if self.criteria.get("max_bedrooms") is not None:
-            base["maxBeds"] = self.criteria["max_bedrooms"]
-        if self.criteria.get("min_bathrooms"):
-            base["minBaths"] = self.criteria["min_bathrooms"]
-        if self.criteria.get("pets_allowed"):
-            base["ptAmenities"].append("petsAllowed")
-
+    def _build_urls(self) -> list[str]:
+        suffix = self._build_filter_suffix()
         zipcodes = self.criteria.get("zipcodes", [])
         neighborhoods = self.criteria.get("neighborhoods", [])
 
-        targets = []
+        urls = []
         for z in zipcodes:
-            targets.append({**base, "geography": {"location": z, "type": "postalCode"}})
+            urls.append(f"https://www.apartments.com/new-york-ny-{z}/{suffix}")
         for n in neighborhoods:
-            targets.append({**base, "geography": {"location": f"{n}, New York, NY", "type": "locality"}})
+            slug = n.lower().replace(" ", "-")
+            urls.append(f"https://www.apartments.com/{slug}-new-york-ny/{suffix}")
 
-        if not targets:
-            targets.append({**base, "geography": {"location": "New York, NY", "type": "locality"}})
+        if not urls:
+            urls.append(f"https://www.apartments.com/new-york-ny/{suffix}")
 
-        return targets
+        return urls
 
-    async def _search(self, client: httpx.AsyncClient, payload: dict) -> list[dict]:
-        resp = await client.post(SEARCH_URL, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        return self._parse(data)
+    def _build_filter_suffix(self) -> str:
+        parts = []
+        min_price = self.criteria.get("min_price")
+        max_price = self.criteria.get("max_price")
+        if min_price or max_price:
+            lo = min_price or 0
+            hi = max_price or 999999
+            parts.append(f"{lo}-to-{hi}")
+        min_beds = self.criteria.get("min_bedrooms")
+        if min_beds:
+            parts.append(f"{min_beds}br")
+        if self.criteria.get("pets_allowed"):
+            parts.append("pet-friendly")
+        return "/".join(parts) + "/" if parts else ""
+
+    async def _scrape_page(self, context, url: str) -> list[dict]:
+        captured = []
+        page = await context.new_page()
+
+        async def handle_response(response):
+            if "apartments.com/services/search" in response.url:
+                try:
+                    data = await response.json()
+                    captured.append(data)
+                except Exception:
+                    pass
+
+        page.on("response", handle_response)
+
+        try:
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.wait_for_timeout(3000)
+        except Exception:
+            pass
+
+        await page.close()
+
+        listings = []
+        for data in captured:
+            listings.extend(self._parse(data))
+        return listings
 
     def _parse(self, data: dict) -> list[dict]:
+        items = (
+            data.get("items")
+            or data.get("results")
+            or data.get("data", {}).get("items", [])
+            or []
+        )
         listings = []
-        items = data.get("items", []) or data.get("results", [])
         for item in items:
             try:
                 l = self._parse_item(item)

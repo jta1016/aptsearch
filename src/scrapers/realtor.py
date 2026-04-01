@@ -1,58 +1,9 @@
 """
-Realtor.com scraper using their internal GraphQL API.
+Realtor.com scraper using Playwright to intercept their internal GraphQL API.
+Direct API calls get 403'd — navigating a real browser session works.
 """
-import json
 import re
-import httpx
-
-GRAPHQL_URL = "https://www.realtor.com/api/v1/rdc_search_srp"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "application/json",
-    "Content-Type": "application/json",
-    "Referer": "https://www.realtor.com/",
-    "Origin": "https://www.realtor.com",
-}
-
-QUERY = """
-query ConsumerSearchMainQuery($query: SearchHomeInput!, $limit: Int, $offset: Int) {
-  home_search: home_search(query: $query, limit: $limit, offset: $offset, sort: [{field: list_date, direction: desc}]) {
-    total
-    results {
-      property_id
-      list_price
-      href
-      description {
-        beds
-        baths_full
-        baths_half
-        text
-      }
-      location {
-        address {
-          line
-          city
-          state_code
-          postal_code
-          coordinate {
-            lat
-            lon
-          }
-        }
-      }
-      pet_policy {
-        cats
-        dogs
-        pets_allowed
-      }
-      list_date
-      photos(limit: 1) {
-        href
-      }
-    }
-  }
-}
-"""
+from playwright.async_api import async_playwright
 
 
 class RealtorScraper:
@@ -61,15 +12,23 @@ class RealtorScraper:
 
     async def scrape(self) -> list[dict]:
         listings = []
-        targets = self._build_targets()
+        urls = self._build_urls()
 
-        async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-            for variables in targets:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+            )
+
+            for url in urls:
                 try:
-                    results = await self._query(client, variables)
+                    results = await self._scrape_page(context, url)
                     listings.extend(results)
                 except Exception as e:
-                    print(f"[realtor] error: {e}")
+                    print(f"[realtor] error for {url}: {e}")
+
+            await browser.close()
 
         seen = set()
         unique = []
@@ -79,56 +38,62 @@ class RealtorScraper:
                 unique.append(l)
         return unique
 
-    def _build_targets(self) -> list[dict]:
-        base_filters = {
-            "listing_subtypes": ["rental"],
-        }
-        if self.criteria.get("min_price"):
-            base_filters["list_price"] = {"min": self.criteria["min_price"]}
-        if self.criteria.get("max_price"):
-            base_filters.setdefault("list_price", {})["max"] = self.criteria["max_price"]
-        if self.criteria.get("min_bedrooms") is not None:
-            base_filters["beds"] = {"min": self.criteria["min_bedrooms"]}
-        if self.criteria.get("max_bedrooms") is not None:
-            base_filters.setdefault("beds", {})["max"] = self.criteria["max_bedrooms"]
-        if self.criteria.get("min_bathrooms"):
-            base_filters["baths"] = {"min": self.criteria["min_bathrooms"]}
-        if self.criteria.get("pets_allowed"):
-            base_filters["pets_allowed"] = True
-
+    def _build_urls(self) -> list[str]:
         zipcodes = self.criteria.get("zipcodes", [])
         neighborhoods = self.criteria.get("neighborhoods", [])
 
-        targets = []
+        urls = []
         for z in zipcodes:
-            targets.append({**base_filters, "postal_code": z})
+            urls.append(f"https://www.realtor.com/apartments/{z}/")
         for n in neighborhoods:
-            targets.append({**base_filters, "city": n, "state_code": "NY"})
+            slug = n.replace(" ", "_")
+            urls.append(f"https://www.realtor.com/apartments/New_York_NY/{slug}/")
 
-        if not targets:
-            targets.append({**base_filters, "city": "New York", "state_code": "NY"})
+        if not urls:
+            urls.append("https://www.realtor.com/apartments/New_York_NY/")
 
-        return [{"query": t, "limit": 20, "offset": 0} for t in targets]
+        return urls
 
-    async def _query(self, client: httpx.AsyncClient, variables: dict) -> list[dict]:
-        payload = {
-            "query": QUERY,
-            "variables": variables,
-            "operationName": "ConsumerSearchMainQuery",
-        }
-        resp = await client.post(
-            GRAPHQL_URL,
-            json=payload,
-            params={"client_id": "rdc-search-for-rent-search", "schema": "vesta"},
+    async def _scrape_page(self, context, url: str) -> list[dict]:
+        captured = []
+        page = await context.new_page()
+
+        async def handle_response(response):
+            if "realtor.com/api/v1/rdc_search_srp" in response.url or "realtor.com/api/v1/hulk" in response.url:
+                try:
+                    data = await response.json()
+                    captured.append(data)
+                except Exception:
+                    pass
+
+        page.on("response", handle_response)
+
+        try:
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.wait_for_timeout(3000)
+        except Exception:
+            pass
+
+        await page.close()
+
+        listings = []
+        for data in captured:
+            listings.extend(self._parse(data))
+        return listings
+
+    def _parse(self, data: dict) -> list[dict]:
+        results = (
+            data.get("data", {}).get("home_search", {}).get("results", [])
+            or data.get("data", {}).get("homes", [])
+            or []
         )
-        resp.raise_for_status()
-        data = resp.json()
-        results = data.get("data", {}).get("home_search", {}).get("results", [])
-        return [self._parse_item(r) for r in results if r]
+        return [r for r in (self._parse_item(i) for i in results if i) if r]
 
-    def _parse_item(self, item: dict) -> dict:
+    def _parse_item(self, item: dict) -> dict | None:
         href = item.get("href", "")
-        if href and not href.startswith("http"):
+        if not href:
+            return None
+        if not href.startswith("http"):
             href = "https://www.realtor.com" + href
 
         desc = item.get("description") or {}
