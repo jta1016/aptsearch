@@ -22,8 +22,12 @@
 ## What Is Not Working
 
 - `zillow`
-  - blocked by PerimeterX / captcha path
-  - no real listings rendered in tested cloud runs
+  - ~~blocked by PerimeterX / captcha path on HTML pages~~
+  - **reworked**: now hits `GetSearchPageState.htm` XHR API instead of HTML page
+  - uses residential proxies (same config as streeteasy/apartments_com)
+  - XHR endpoint returns clean JSON; historically less protected than HTML page
+  - not yet validated against a live cloud run — needs a deploy + test
+  - if still blocked: fall back to `maxcopell/zillow-scraper` actor ($2/1k results)
 - `apartments_com`
   - blocked in Apify/cloud
   - also blocked in the tested local runs during this session
@@ -104,6 +108,6 @@ Best next moves:
 
 ## Things Not To Reinvestigate First
 
-- Do not spend more time on minor Zillow header tweaks.
+- Do not spend more time on minor Zillow header tweaks — actor delegation is the new strategy.
 - Do not assume Apartments.com is parser-broken when the page title is `Access Denied`.
 - Do not assume Realtor is close to working without addressing the `401`/`429` behavior first.

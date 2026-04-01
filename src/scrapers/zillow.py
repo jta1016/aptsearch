@@ -1,30 +1,36 @@
 """
 Zillow rental scraper.
-Fetches search page and extracts listings from __NEXT_DATA__ JSON.
-No browser required — uses httpx only.
+Uses Zillow's internal XHR search API (GetSearchPageState.htm) instead of
+scraping the HTML page, which is blocked by PerimeterX in cloud environments.
+The XHR endpoint returns clean JSON and has historically been less protected
+than the HTML page.
 """
-import re
 import json
+import re
+from urllib.parse import urlencode
+
 import httpx
-from urllib.parse import urljoin
-
 from apify import Actor
-from bs4 import BeautifulSoup
-from browser_fetch import fetch_page_artifacts
+from proxy_support import get_proxy_url
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+# Headers that mimic the XHR request the browser makes from within a Zillow page.
+# Sec-Fetch-Mode: cors + Sec-Fetch-Site: same-origin is the key difference
+# from a full-page load — it signals this is an internal AJAX request.
+XHR_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "*/*",
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://www.google.com/",
     "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
     "Sec-Ch-Ua-Mobile": "?0",
     "Sec-Ch-Ua-Platform": '"macOS"',
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "cross-site",
-    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
 }
 
 ZIP_TO_SLUG = {
@@ -69,20 +75,17 @@ class ZillowScraper:
         listings = []
         zipcodes = self.criteria.get("zipcodes", [])
 
-        # Prefer direct zip URL; fall back to neighborhood slugs if no zipcodes given.
         if zipcodes:
-            urls = [self._zip_url(z) for z in zipcodes]
+            targets = [("zip", z) for z in zipcodes]
         else:
-            slugs = self._get_slugs()
-            urls = [self._slug_url(s) for s in slugs]
+            targets = [("slug", s) for s in self._get_slugs()]
 
-        async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-            for url in urls:
-                try:
-                    results = await self._fetch(client, url)
-                    listings.extend(results)
-                except Exception as e:
-                    print(f"[zillow] error for {url}: {e}")
+        for kind, value in targets:
+            try:
+                results = await self._fetch(kind, value)
+                listings.extend(results)
+            except Exception as e:
+                print(f"[zillow] error for {kind}={value}: {e}")
 
         seen = set()
         unique = []
@@ -93,127 +96,133 @@ class ZillowScraper:
                 unique.append(listing)
         return unique
 
+    async def _fetch(self, kind: str, value: str) -> list[dict]:
+        xhr_url = self._xhr_url(kind, value)
+        referer = self._page_url(kind, value)
+        headers = {**XHR_HEADERS, "Referer": referer}
+
+        proxy_url = await get_proxy_url("zillow", session_id=f"zillow-{value}")
+
+        try:
+            if proxy_url:
+                async with httpx.AsyncClient(
+                    headers=headers, timeout=30, follow_redirects=True, proxy=proxy_url
+                ) as client:
+                    resp = await client.get(xhr_url)
+            else:
+                async with httpx.AsyncClient(
+                    headers=headers, timeout=30, follow_redirects=True
+                ) as client:
+                    resp = await client.get(xhr_url)
+        except Exception as e:
+            print(f"[zillow] request failed for {value}: {e}")
+            return []
+
+        print(f"[zillow] XHR HTTP {resp.status_code} for {value}")
+
+        if resp.status_code != 200:
+            preview = resp.text[:500].replace("\n", " ")
+            print(f"[zillow] non-200 body preview: {preview}")
+            return []
+
+        try:
+            data = resp.json()
+        except Exception:
+            preview = resp.text[:300].replace("\n", " ")
+            print(f"[zillow] failed to parse JSON — body preview: {preview}")
+            return []
+
+        # XHR response is the searchPageState directly (no props.pageProps wrapper).
+        # Structure: {"cat1": {"searchResults": {"listResults": [...]}}}
+        list_results = (
+            data.get("cat1", {})
+                .get("searchResults", {})
+                .get("listResults")
+        )
+        if not isinstance(list_results, list):
+            # Try mapResults as fallback
+            list_results = (
+                data.get("cat1", {})
+                    .get("searchResults", {})
+                    .get("mapResults")
+            )
+        if not isinstance(list_results, list):
+            print(f"[zillow] no listResults in XHR response for {value}")
+            Actor.log.debug(f"[zillow] XHR response keys: {list(data.keys())}")
+            return []
+
+        listings = []
+        for item in list_results:
+            try:
+                listings.extend(self._expand_item(item))
+            except Exception:
+                continue
+
+        print(f"[zillow] parsed {len(listings)} listings for {value}")
+        return listings
+
+    def _xhr_url(self, kind: str, value: str) -> str:
+        """Build the GetSearchPageState XHR URL."""
+        search_query_state = {
+            "pagination": {"currentPage": 1},
+            "usersSearchTerm": value if kind == "zip" else value.replace("-", " ").title(),
+            "filterState": self._filter_state(),
+            "isListVisible": True,
+            "isMapVisible": False,
+        }
+        wants = {"cat1": ["listResults", "mapResults"], "cat2": ["total"]}
+        params = {
+            "searchQueryState": json.dumps(search_query_state, separators=(",", ":")),
+            "wants": json.dumps(wants, separators=(",", ":")),
+            "requestId": "2",
+        }
+        return "https://www.zillow.com/search/GetSearchPageState.htm?" + urlencode(params)
+
+    def _filter_state(self) -> dict:
+        """Build Zillow filterState for a rental search with optional price/bed criteria."""
+        state: dict = {
+            "fr": {"value": True},    # for rent
+            "fsba": {"value": False},  # not for sale by agent
+            "fsbo": {"value": False},  # not for sale by owner
+            "nc": {"value": False},    # not new construction sale
+            "cmsn": {"value": False},  # not coming soon
+            "auc": {"value": False},   # not auction
+            "fore": {"value": False},  # not foreclosure
+        }
+
+        min_price = self.criteria.get("min_price")
+        max_price = self.criteria.get("max_price")
+        if min_price is not None or max_price is not None:
+            mp: dict = {}
+            if min_price is not None:
+                mp["min"] = min_price
+            if max_price is not None:
+                mp["max"] = max_price
+            state["mp"] = mp  # monthly price (rental)
+
+        min_beds = self.criteria.get("min_bedrooms")
+        max_beds = self.criteria.get("max_bedrooms")
+        if min_beds is not None or max_beds is not None:
+            beds: dict = {}
+            if min_beds is not None:
+                beds["min"] = min_beds
+            if max_beds is not None:
+                beds["max"] = max_beds
+            state["beds"] = beds
+
+        return state
+
+    def _page_url(self, kind: str, value: str) -> str:
+        """The HTML page URL used as the Referer header."""
+        if kind == "zip":
+            return f"https://www.zillow.com/homes/for_rent/{value}_rb/"
+        return f"https://www.zillow.com/{value}/rentals/"
+
     def _get_slugs(self) -> list[str]:
         neighborhoods = self.criteria.get("neighborhoods", [])
         if neighborhoods:
             return [n.lower().replace(" ", "-") + "-new-york-ny" for n in neighborhoods]
         return [DEFAULT_SLUG]
-
-    def _zip_url(self, zipcode: str) -> str:
-        """Build a Zillow rentals URL using zip code directly."""
-        min_price = self.criteria.get("min_price")
-        max_price = self.criteria.get("max_price")
-        min_beds = self.criteria.get("min_bedrooms")
-        max_beds = self.criteria.get("max_bedrooms")
-
-        params = []
-        if min_price or max_price:
-            params.append(f"price={min_price or 0}-{max_price or 99999}")
-        if min_beds is not None or max_beds is not None:
-            params.append(f"beds={min_beds or 0}-{max_beds or 8}")
-        query = ("?" + "&".join(params)) if params else ""
-        return f"https://www.zillow.com/homes/for_rent/{zipcode}_rb/{query}"
-
-    def _slug_url(self, slug: str) -> str:
-        """Build a Zillow rentals URL using a neighborhood slug."""
-        min_price = self.criteria.get("min_price")
-        max_price = self.criteria.get("max_price")
-        min_beds = self.criteria.get("min_bedrooms")
-        max_beds = self.criteria.get("max_bedrooms")
-
-        params = []
-        if min_price or max_price:
-            params.append(f"price={min_price or 0}-{max_price or 99999}")
-        if min_beds is not None or max_beds is not None:
-            params.append(f"beds={min_beds or 0}-{max_beds or 8}")
-        query = ("?" + "&".join(params)) if params else ""
-        return f"https://www.zillow.com/{slug}/rentals/{query}"
-
-    async def _fetch(self, client: httpx.AsyncClient, url: str) -> list[dict]:
-        resp = await client.get(url)
-        if resp.status_code == 200:
-            return self._parse(resp.text)
-
-        print(f"[zillow] HTTP {resp.status_code} for {url}")
-        try:
-            artifacts = await fetch_page_artifacts(url)
-            await self._store_browser_artifacts(url, artifacts)
-            self._log_browser_artifacts(url, artifacts)
-            html = artifacts["html"]
-            results = self._parse(html)
-            if results:
-                print(f"[zillow] Playwright fallback returned {len(results)} listings for {url}")
-            return results
-        except Exception as e:
-            print(f"[zillow] Playwright fallback failed for {url}: {e}")
-            return []
-
-    def _parse(self, html: str) -> list[dict]:
-        m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
-        if m:
-            try:
-                data = json.loads(m.group(1))
-            except json.JSONDecodeError:
-                print("[zillow] failed to parse __NEXT_DATA__ JSON")
-            else:
-                list_results = self._extract_list_results(data)
-                if list_results is not None:
-                    listings = []
-                    for item in list_results:
-                        try:
-                            listings.extend(self._expand_item(item))
-                        except Exception:
-                            continue
-                    if listings:
-                        return listings
-                print("[zillow] could not find listResults in __NEXT_DATA__")
-        else:
-            print("[zillow] __NEXT_DATA__ script tag not found")
-
-        listings = self._parse_html_cards(html)
-        if listings:
-            print(f"[zillow] HTML card parser returned {len(listings)} listings")
-        return listings
-
-    def _extract_list_results(self, data: dict) -> list | None:
-        """Try multiple known JSON paths for listResults."""
-        page_props = data.get("props", {}).get("pageProps", {})
-
-        paths = [
-            # Current Next.js structure
-            ["searchPageState", "cat1", "searchResults", "listResults"],
-            # Alternate path seen in 2024
-            ["cat1", "searchResults", "listResults"],
-            # Older structure
-            ["initialData", "cat1", "searchResults", "listResults"],
-            ["initialSearchData", "cat1", "searchResults", "listResults"],
-        ]
-        for path in paths:
-            node = page_props
-            for key in path:
-                if isinstance(node, dict):
-                    node = node.get(key)
-                else:
-                    node = None
-                    break
-            if isinstance(node, list):
-                return node
-
-        # Deep search: look for any key named listResults
-        return self._deep_find(page_props, "listResults")
-
-    def _deep_find(self, obj, key: str, depth: int = 0):
-        """Recursively search for a key in nested dicts."""
-        if depth > 8:
-            return None
-        if isinstance(obj, dict):
-            if key in obj and isinstance(obj[key], list):
-                return obj[key]
-            for v in obj.values():
-                result = self._deep_find(v, key, depth + 1)
-                if result is not None:
-                    return result
-        return None
 
     def _expand_item(self, item: dict) -> list[dict]:
         """Buildings have a units array — expand into one listing per unit."""
@@ -224,7 +233,7 @@ class ZillowScraper:
             base_url = "https://www.zillow.com" + base_url
 
         address = item.get("address", "")
-        zipcode = item.get("addressZipcode", "") or None
+        zipcode = item.get("addressZipcode", "") or _extract_zipcode(address) or None
         building_name = item.get("statusText", "") or item.get("buildingName", "")
         lat = item.get("latLong", {}).get("latitude") if item.get("latLong") else None
         lng = item.get("latLong", {}).get("longitude") if item.get("latLong") else None
@@ -236,11 +245,14 @@ class ZillowScraper:
             price = _parse_price(str(price_text))
             beds_raw = item.get("beds")
             baths_raw = item.get("baths")
+            beds = int(beds_raw) if beds_raw is not None else None
+            if not self._bedroom_matches(beds):
+                return []
             return [{
                 "url": base_url,
                 "title": building_name or address,
                 "price": price,
-                "bedrooms": int(beds_raw) if beds_raw is not None else None,
+                "bedrooms": beds,
                 "bathrooms": float(baths_raw) if baths_raw is not None else None,
                 "address": address,
                 "zipcode": zipcode,
@@ -257,14 +269,8 @@ class ZillowScraper:
             price = _parse_price(str(unit.get("price", "")))
             beds_raw = unit.get("beds")
             beds = int(beds_raw) if beds_raw is not None else None
-
-            min_beds = self.criteria.get("min_bedrooms")
-            max_beds = self.criteria.get("max_bedrooms")
-            if min_beds is not None and beds is not None and beds < min_beds:
+            if not self._bedroom_matches(beds):
                 continue
-            if max_beds is not None and beds is not None and beds > max_beds:
-                continue
-
             title = f"{building_name} - {beds}bd" if building_name else f"{address} - {beds}bd"
             results.append({
                 "url": base_url,
@@ -283,141 +289,6 @@ class ZillowScraper:
             })
         return results
 
-    def _parse_html_cards(self, html: str) -> list[dict]:
-        soup = BeautifulSoup(html, "lxml")
-        listings: list[dict] = []
-        seen_urls: set[str] = set()
-
-        for anchor in soup.select('a[href]'):
-            link_text = anchor.get_text(" ", strip=True)
-            href = anchor.get("href", "").strip()
-            if not href or href.startswith("#"):
-                continue
-            if link_text.startswith("$"):
-                continue
-            if link_text in {"Save", "More", "Check availability", "Previous page", "Next page"}:
-                continue
-            if "Page " in link_text or "Apartments for Rent" in link_text or "Houses for Rent" in link_text:
-                continue
-            if "|" not in link_text and not self._looks_like_listing_address(link_text):
-                continue
-
-            container = self._listing_container(anchor)
-            if container is None:
-                continue
-
-            block_text = container.get_text(" ", strip=True)
-            if "$" not in block_text:
-                continue
-
-            url = urljoin("https://www.zillow.com", href)
-            if not self._looks_like_listing_url(url):
-                continue
-            if url in seen_urls:
-                continue
-
-            parsed = self._parse_html_listing(url, link_text, block_text, container)
-            if not parsed:
-                continue
-
-            added = False
-            for listing in parsed:
-                listing_url = listing.get("url")
-                dedupe_key = f"{listing_url}|{listing.get('bedrooms')}|{listing.get('price')}"
-                if dedupe_key in seen_urls:
-                    continue
-                seen_urls.add(dedupe_key)
-                listings.append(listing)
-                added = True
-
-            if added:
-                seen_urls.add(url)
-
-        return listings
-
-    def _listing_container(self, anchor):
-        node = anchor
-        for _ in range(6):
-            node = node.parent
-            if node is None:
-                return None
-            text = node.get_text(" ", strip=True)
-            if "$" in text and len(text) >= 40:
-                return node
-        return anchor.parent
-
-    def _parse_html_listing(self, url: str, link_text: str, block_text: str, container) -> list[dict]:
-        title, address = self._split_title_address(link_text)
-        zipcode = self._extract_zipcode(address or block_text)
-        image = None
-        image_el = container.select_one("img")
-        if image_el:
-            image = image_el.get("src") or image_el.get("data-src")
-
-        unit_matches = []
-        for match in re.finditer(r"(\$[\d,]+(?:\+|/mo)?)\s*(Studio|\d+\s*bd\+?|\d+\s*bd)?", block_text, re.I):
-            price_text = match.group(1)
-            bed_text = match.group(2)
-            beds = 0 if bed_text and bed_text.lower().startswith("studio") else _parse_beds(bed_text or "")
-            unit_matches.append((_parse_price(price_text), beds))
-
-        listings: list[dict] = []
-        for price, beds in unit_matches:
-            if not self._bedroom_matches(beds):
-                continue
-            listing_title = title or address or link_text
-            if beds is not None and "|" in link_text:
-                listing_title = f"{listing_title} - {beds}bd" if beds > 0 else f"{listing_title} - Studio"
-            listings.append({
-                "url": url,
-                "title": listing_title,
-                "price": price,
-                "bedrooms": beds,
-                "bathrooms": _parse_baths(block_text),
-                "address": address or link_text,
-                "zipcode": zipcode,
-                "lat": None,
-                "lng": None,
-                "pets_allowed": None,
-                "available_date": None,
-                "source": "zillow",
-                "image_url": image,
-                "description": None,
-            })
-
-        if listings:
-            return listings
-
-        price = _parse_price(block_text)
-        beds = _parse_beds(block_text)
-        if not self._bedroom_matches(beds):
-            return []
-
-        return [{
-            "url": url,
-            "title": title or address or link_text,
-            "price": price,
-            "bedrooms": beds,
-            "bathrooms": _parse_baths(block_text),
-            "address": address or link_text,
-            "zipcode": zipcode,
-            "lat": None,
-            "lng": None,
-            "pets_allowed": None,
-            "available_date": None,
-            "source": "zillow",
-            "image_url": image,
-            "description": None,
-        }]
-
-    def _split_title_address(self, link_text: str) -> tuple[str, str]:
-        if " | " in link_text:
-            title, address = link_text.split(" | ", 1)
-            return title.strip(), address.strip()
-        if self._looks_like_listing_address(link_text):
-            return link_text.strip(), link_text.strip()
-        return link_text.strip(), ""
-
     def _bedroom_matches(self, beds: int | None) -> bool:
         min_beds = self.criteria.get("min_bedrooms")
         max_beds = self.criteria.get("max_bedrooms")
@@ -427,67 +298,6 @@ class ZillowScraper:
             return False
         return True
 
-    def _looks_like_listing_url(self, url: str) -> bool:
-        return any(
-            token in url
-            for token in ("/b/", "/homedetails/", "_zpid", "/apartments/", "/community/")
-        )
-
-    def _looks_like_listing_address(self, text: str) -> bool:
-        return bool(re.search(r"\d", text) and "," in text)
-
-    def _extract_zipcode(self, text: str) -> str | None:
-        match = re.search(r"\b(\d{5})(?:-\d{4})?\b", text or "")
-        return match.group(1) if match else None
-
-    async def _store_browser_artifacts(self, url: str, artifacts: dict) -> None:
-        if not (Actor.is_at_home() or getattr(Actor, "config", None)):
-            return
-
-        key_suffix = re.sub(r"[^\w]+", "-", url).strip("-").lower()[:80]
-        key = f"zillow-browser-{key_suffix}"
-        compact_artifacts = {
-            "url": url,
-            "final_url": artifacts.get("final_url"),
-            "title": artifacts.get("title"),
-            "challenge_signals": artifacts.get("challenge_signals") or [],
-            "cookies": [
-                {
-                    "name": cookie.get("name"),
-                    "domain": cookie.get("domain"),
-                    "expires": cookie.get("expires"),
-                }
-                for cookie in artifacts.get("cookies", [])[:20]
-            ],
-            "requests": artifacts.get("requests", [])[:20],
-            "responses": artifacts.get("responses", [])[:20],
-            "html_preview": (artifacts.get("html") or "")[:3000],
-        }
-        try:
-            await Actor.set_value(key, compact_artifacts)
-            print(f"[zillow] stored browser artifacts in key-value store: {key}")
-        except Exception as exc:
-            print(f"[zillow] failed to store browser artifacts for {url}: {exc}")
-
-    def _log_browser_artifacts(self, url: str, artifacts: dict) -> None:
-        print(
-            "[zillow] browser summary "
-            f"url={url} final_url={artifacts.get('final_url')} "
-            f"title={artifacts.get('title')!r} "
-            f"challenge_signals={artifacts.get('challenge_signals') or []}"
-        )
-        for response in artifacts.get("responses", [])[:8]:
-            preview = response.get("body_preview")
-            print(
-                "[zillow] browser response "
-                f"status={response.get('status')} "
-                f"type={response.get('resource_type')} "
-                f"url={response.get('url')} "
-                f"content_type={response.get('content_type')}"
-            )
-            if preview:
-                print(f"[zillow] browser body preview: {preview}")
-
 
 def _parse_price(text: str) -> int | None:
     text = text.replace(",", "").replace("+", "")
@@ -495,13 +305,6 @@ def _parse_price(text: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def _parse_beds(text: str) -> int | None:
-    if re.search(r"studio", text, re.I):
-        return 0
-    match = re.search(r"(\d+)\s*bd", text, re.I)
-    return int(match.group(1)) if match else None
-
-
-def _parse_baths(text: str) -> float | None:
-    match = re.search(r"([\d.]+)\s*ba", text, re.I)
-    return float(match.group(1)) if match else None
+def _extract_zipcode(text: str) -> str | None:
+    match = re.search(r"\b(\d{5})(?:-\d{4})?\b", text or "")
+    return match.group(1) if match else None

@@ -23,6 +23,11 @@ _SITE_PROXY_OPTIONS: dict[str, list[dict]] = {
         {"country_code": "US"},
         {},
     ],
+    "zillow": [
+        {"groups": ["RESIDENTIAL"], "country_code": "US"},
+        {"country_code": "US"},
+        {},
+    ],
     "default": [
         {"country_code": "US"},
         {},
