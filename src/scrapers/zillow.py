@@ -1,21 +1,18 @@
 """
 Zillow rental scraper.
-Uses Zillow's internal XHR search API (GetSearchPageState.htm) instead of
-scraping the HTML page, which is blocked by PerimeterX in cloud environments.
-The XHR endpoint returns clean JSON and has historically been less protected
-than the HTML page.
+Uses Zillow's internal XHR search API instead of scraping the HTML page,
+which is blocked by PerimeterX in cloud environments.
+
+Endpoint: PUT https://www.zillow.com/async-create-search-page-state
+(Replaced the older GET /search/GetSearchPageState.htm which now returns 404)
 """
-import json
 import re
-from urllib.parse import urlencode
 
 import httpx
 from apify import Actor
 from proxy_support import get_proxy_url
 
-# Headers that mimic the XHR request the browser makes from within a Zillow page.
-# Sec-Fetch-Mode: cors + Sec-Fetch-Site: same-origin is the key difference
-# from a full-page load — it signals this is an internal AJAX request.
+# Headers that mimic the XHR PUT request the browser makes from within a Zillow page.
 XHR_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -25,6 +22,7 @@ XHR_HEADERS = {
     "Accept": "*/*",
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
+    "Content-Type": "application/json",
     "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
     "Sec-Ch-Ua-Mobile": "?0",
     "Sec-Ch-Ua-Platform": '"macOS"',
@@ -32,6 +30,8 @@ XHR_HEADERS = {
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "same-origin",
 }
+
+XHR_URL = "https://www.zillow.com/async-create-search-page-state"
 
 ZIP_TO_SLUG = {
     "10001": "chelsea-new-york-ny", "10002": "lower-east-side-new-york-ny",
@@ -97,9 +97,9 @@ class ZillowScraper:
         return unique
 
     async def _fetch(self, kind: str, value: str) -> list[dict]:
-        xhr_url = self._xhr_url(kind, value)
         referer = self._page_url(kind, value)
         headers = {**XHR_HEADERS, "Referer": referer}
+        body = self._request_body(kind, value)
 
         proxy_url = await get_proxy_url("zillow", session_id=f"zillow-{value}")
 
@@ -108,12 +108,12 @@ class ZillowScraper:
                 async with httpx.AsyncClient(
                     headers=headers, timeout=30, follow_redirects=True, proxy=proxy_url
                 ) as client:
-                    resp = await client.get(xhr_url)
+                    resp = await client.put(XHR_URL, json=body)
             else:
                 async with httpx.AsyncClient(
                     headers=headers, timeout=30, follow_redirects=True
                 ) as client:
-                    resp = await client.get(xhr_url)
+                    resp = await client.put(XHR_URL, json=body)
         except Exception as e:
             print(f"[zillow] request failed for {value}: {e}")
             return []
@@ -132,23 +132,21 @@ class ZillowScraper:
             print(f"[zillow] failed to parse JSON — body preview: {preview}")
             return []
 
-        # XHR response is the searchPageState directly (no props.pageProps wrapper).
-        # Structure: {"cat1": {"searchResults": {"listResults": [...]}}}
+        # Response structure: {"cat1": {"searchResults": {"listResults": [...]}}}
         list_results = (
             data.get("cat1", {})
                 .get("searchResults", {})
                 .get("listResults")
         )
         if not isinstance(list_results, list):
-            # Try mapResults as fallback
             list_results = (
                 data.get("cat1", {})
                     .get("searchResults", {})
                     .get("mapResults")
             )
         if not isinstance(list_results, list):
-            print(f"[zillow] no listResults in XHR response for {value}")
-            Actor.log.debug(f"[zillow] XHR response keys: {list(data.keys())}")
+            print(f"[zillow] no listResults in response for {value}")
+            Actor.log.debug(f"[zillow] response keys: {list(data.keys())}")
             return []
 
         listings = []
@@ -161,22 +159,23 @@ class ZillowScraper:
         print(f"[zillow] parsed {len(listings)} listings for {value}")
         return listings
 
-    def _xhr_url(self, kind: str, value: str) -> str:
-        """Build the GetSearchPageState XHR URL."""
-        search_query_state = {
-            "pagination": {"currentPage": 1},
-            "usersSearchTerm": value if kind == "zip" else value.replace("-", " ").title(),
-            "filterState": self._filter_state(),
-            "isListVisible": True,
-            "isMapVisible": False,
+    def _request_body(self, kind: str, value: str) -> dict:
+        """Build the PUT JSON body for async-create-search-page-state."""
+        search_term = value if kind == "zip" else value.replace("-", " ").title()
+        return {
+            "searchQueryState": {
+                "pagination": {"currentPage": 1},
+                "usersSearchTerm": search_term,
+                "filterState": self._filter_state(),
+                "isListVisible": True,
+                "isMapVisible": False,
+            },
+            "wants": {
+                "cat1": ["listResults", "mapResults"],
+                "cat2": ["total"],
+            },
+            "requestId": 2,
         }
-        wants = {"cat1": ["listResults", "mapResults"], "cat2": ["total"]}
-        params = {
-            "searchQueryState": json.dumps(search_query_state, separators=(",", ":")),
-            "wants": json.dumps(wants, separators=(",", ":")),
-            "requestId": "2",
-        }
-        return "https://www.zillow.com/search/GetSearchPageState.htm?" + urlencode(params)
 
     def _filter_state(self) -> dict:
         """Build Zillow filterState for a rental search with optional price/bed criteria."""
