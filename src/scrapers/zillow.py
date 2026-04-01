@@ -175,30 +175,66 @@ class ZillowScraper:
         return [DEFAULT_SLUG]
 
     def _zip_url(self, zipcode: str) -> str:
-        min_price = self.criteria.get("min_price")
-        max_price = self.criteria.get("max_price")
-        min_beds = self.criteria.get("min_bedrooms")
-        max_beds = self.criteria.get("max_bedrooms")
-        params = []
-        if min_price or max_price:
-            params.append(f"price={min_price or 0}-{max_price or 99999}")
-        if min_beds is not None or max_beds is not None:
-            params.append(f"beds={min_beds or 0}-{max_beds or 8}")
-        query = ("?" + "&".join(params)) if params else ""
-        return f"https://www.zillow.com/homes/for_rent/{zipcode}_rb/{query}"
+        """Build a Zillow rentals URL with searchQueryState embedded.
+        maxcopell/zillow-scraper requires the searchQueryState query param."""
+        import json
+        from urllib.parse import urlencode
+        sqs = {
+            "pagination": {},
+            "usersSearchTerm": zipcode,
+            "filterState": self._filter_state(),
+            "isListVisible": True,
+            "isMapVisible": False,
+        }
+        return "https://www.zillow.com/homes/for_rent/?" + urlencode(
+            {"searchQueryState": json.dumps(sqs, separators=(",", ":"))}
+        )
 
     def _slug_url(self, slug: str) -> str:
+        """Build a Zillow rentals URL with searchQueryState embedded."""
+        import json
+        from urllib.parse import urlencode
+        search_term = slug.replace("-", " ").title()
+        sqs = {
+            "pagination": {},
+            "usersSearchTerm": search_term,
+            "filterState": self._filter_state(),
+            "isListVisible": True,
+            "isMapVisible": False,
+        }
+        return "https://www.zillow.com/homes/for_rent/?" + urlencode(
+            {"searchQueryState": json.dumps(sqs, separators=(",", ":"))}
+        )
+
+    def _filter_state(self) -> dict:
+        state: dict = {
+            "fr": {"value": True},
+            "fsba": {"value": False},
+            "fsbo": {"value": False},
+            "nc": {"value": False},
+            "cmsn": {"value": False},
+            "auc": {"value": False},
+            "fore": {"value": False},
+        }
         min_price = self.criteria.get("min_price")
         max_price = self.criteria.get("max_price")
+        if min_price is not None or max_price is not None:
+            mp: dict = {}
+            if min_price is not None:
+                mp["min"] = min_price
+            if max_price is not None:
+                mp["max"] = max_price
+            state["mp"] = mp
         min_beds = self.criteria.get("min_bedrooms")
         max_beds = self.criteria.get("max_bedrooms")
-        params = []
-        if min_price or max_price:
-            params.append(f"price={min_price or 0}-{max_price or 99999}")
         if min_beds is not None or max_beds is not None:
-            params.append(f"beds={min_beds or 0}-{max_beds or 8}")
-        query = ("?" + "&".join(params)) if params else ""
-        return f"https://www.zillow.com/{slug}/rentals/{query}"
+            beds: dict = {}
+            if min_beds is not None:
+                beds["min"] = min_beds
+            if max_beds is not None:
+                beds["max"] = max_beds
+            state["beds"] = beds
+        return state
 
 
 def _parse_price(text: str) -> int | None:
