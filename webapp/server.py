@@ -38,7 +38,7 @@ class Preferences(BaseModel):
     preferred_subway_lines: list[str] = []
     availability_before: str | None = None
     results_per_run: int = 20
-    sites: list[str] = ["craigslist", "zillow", "apartments_com", "realtor"]
+    sites: list[str] = ["craigslist", "padmapper", "zillow", "apartments_com", "realtor"]
 
 
 def load_prefs() -> dict:
@@ -73,8 +73,7 @@ def apify_headers():
 @app.post("/api/run")
 async def trigger_run():
     prefs = load_prefs()
-    # Strip email — actor doesn't need it
-    actor_input = {k: v for k, v in prefs.items() if k != "email"}
+    actor_input = prefs
 
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(

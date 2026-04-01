@@ -12,11 +12,13 @@ from apify import Actor
 from scrapers.craigslist import CraigslistScraper
 from scrapers.zillow import ZillowScraper
 from scrapers.apartments_com import ApartmentsComScraper
+from scrapers.padmapper import PadmapperScraper
 from scrapers.realtor import RealtorScraper
 from ranker import rank_listings
 
 SCRAPER_MAP = {
     "craigslist": CraigslistScraper,
+    "padmapper": PadmapperScraper,
     "zillow": ZillowScraper,
     "apartments_com": ApartmentsComScraper,
     "realtor": RealtorScraper,
@@ -50,7 +52,7 @@ async def main():
             "max_subway_distance_miles": inp.get("max_subway_distance_miles"),
             "preferred_subway_lines": inp.get("preferred_subway_lines") or [],
             "results_per_run": inp.get("results_per_run", 20),
-            "sites": inp.get("sites") or ["craigslist", "zillow", "apartments_com", "realtor"],
+            "sites": inp.get("sites") or ["craigslist", "padmapper", "zillow", "apartments_com", "realtor"],
         }
 
         Actor.log.info(f"Search criteria: {criteria}")
@@ -222,6 +224,7 @@ def send_results_email(recipients: list[str], listings: list, criteria: dict, in
 def _build_email_html(listings: list, criteria: dict, inp: dict, new_count: int) -> str:
     source_labels = {
         "craigslist": "Craigslist",
+        "padmapper": "PadMapper",
         "zillow": "Zillow",
         "apartments_com": "Apartments.com",
         "realtor": "Realtor.com",

@@ -660,6 +660,7 @@
         <label>Sites</label>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:2px">
           <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-craigslist" checked /> Craigslist</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-padmapper" checked /> PadMapper</label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-zillow" checked /> Zillow</label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-apartments_com" checked /> Apartments.com</label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-realtor" checked /> Realtor.com</label>
@@ -819,7 +820,7 @@
     availability_before: null,
     pets_allowed: false,
     results_per_run: 20,
-    sites: ['craigslist', 'zillow', 'apartments_com', 'realtor'],
+    sites: ['craigslist', 'padmapper', 'zillow', 'apartments_com', 'realtor'],
   };
   const DEFAULT_FILTER_PREFS = {
     ...DEFAULT_PREFS,
@@ -957,7 +958,7 @@
 
   // ── Preferences ─────────────────────────────────────────────────────────────
   function buildPrefs() {
-    const sites = ['craigslist','zillow','apartments_com','realtor'].filter(s => document.getElementById(`site-${s}`).checked);
+    const sites = ['craigslist','padmapper','zillow','apartments_com','realtor'].filter(s => document.getElementById(`site-${s}`).checked);
     const minBeds = parseInt(document.getElementById('f-min-beds').value);
     const maxBeds = parseInt(document.getElementById('f-max-beds').value);
     const minBaths = parseFloat(document.getElementById('f-min-baths').value);
@@ -999,7 +1000,7 @@
     setTags('neighborhoods', prefs.neighborhoods);
     setTags('preferred_subway_lines', prefs.preferred_subway_lines);
     const sites = prefs.sites || [];
-    ['craigslist','zillow','apartments_com','realtor'].forEach(s => {
+    ['craigslist','padmapper','zillow','apartments_com','realtor'].forEach(s => {
       document.getElementById(`site-${s}`).checked = sites.includes(s);
     });
   }
@@ -1066,6 +1067,7 @@
       '#f-pets',
       '#f-results',
       '#site-craigslist',
+      '#site-padmapper',
       '#site-zillow',
       '#site-apartments_com',
       '#site-realtor',
@@ -1229,7 +1231,7 @@
   function cardHTML(item) {
     const price = item.price ? `$${item.price.toLocaleString()}/mo` : 'Price N/A';
     const meta = [item.bedrooms != null ? (item.bedrooms === 0 ? 'Studio' : `${item.bedrooms} bd`) : null, item.bathrooms != null ? `${item.bathrooms} ba` : null].filter(Boolean).join(' · ');
-    const sourceLabel = { craigslist: 'Craigslist', zillow: 'Zillow', apartments_com: 'Apartments.com', realtor: 'Realtor.com' };
+    const sourceLabel = { craigslist: 'Craigslist', padmapper: 'PadMapper', zillow: 'Zillow', apartments_com: 'Apartments.com', realtor: 'Realtor.com' };
     const img = item.image_url ? `<img class="card-img" src="${item.image_url}" loading="lazy" onerror="this.style.display='none'" />`  : `<div class="card-img-placeholder">🏠</div>`;
     const subway = item.nearest_subway ? `<span class="badge badge-subway">🚇 ${item.nearest_subway} (${item.subway_distance_miles?.toFixed(2)} mi)</span>` : '';
     const pets = item.pets_allowed === true ? `<span class="badge badge-pets">🐾 Pets OK</span>` : '';
