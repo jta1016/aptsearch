@@ -6,6 +6,9 @@ No browser required — uses httpx only.
 import re
 import json
 import httpx
+from urllib.parse import urljoin
+
+from bs4 import BeautifulSoup
 from browser_fetch import fetch_page_html
 
 HEADERS = {
@@ -143,26 +146,29 @@ class ZillowScraper:
 
     def _parse(self, html: str) -> list[dict]:
         m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
-        if not m:
-            print("[zillow] __NEXT_DATA__ script tag not found")
-            return []
-        try:
-            data = json.loads(m.group(1))
-        except json.JSONDecodeError:
-            print("[zillow] failed to parse __NEXT_DATA__ JSON")
-            return []
-
-        list_results = self._extract_list_results(data)
-        if list_results is None:
-            print("[zillow] could not find listResults in __NEXT_DATA__")
-            return []
-
-        listings = []
-        for item in list_results:
+        if m:
             try:
-                listings.extend(self._expand_item(item))
-            except Exception:
-                continue
+                data = json.loads(m.group(1))
+            except json.JSONDecodeError:
+                print("[zillow] failed to parse __NEXT_DATA__ JSON")
+            else:
+                list_results = self._extract_list_results(data)
+                if list_results is not None:
+                    listings = []
+                    for item in list_results:
+                        try:
+                            listings.extend(self._expand_item(item))
+                        except Exception:
+                            continue
+                    if listings:
+                        return listings
+                print("[zillow] could not find listResults in __NEXT_DATA__")
+        else:
+            print("[zillow] __NEXT_DATA__ script tag not found")
+
+        listings = self._parse_html_cards(html)
+        if listings:
+            print(f"[zillow] HTML card parser returned {len(listings)} listings")
         return listings
 
     def _extract_list_results(self, data: dict) -> list | None:
@@ -273,8 +279,177 @@ class ZillowScraper:
             })
         return results
 
+    def _parse_html_cards(self, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "lxml")
+        listings: list[dict] = []
+        seen_urls: set[str] = set()
+
+        for anchor in soup.select('a[href]'):
+            link_text = anchor.get_text(" ", strip=True)
+            href = anchor.get("href", "").strip()
+            if not href or href.startswith("#"):
+                continue
+            if link_text.startswith("$"):
+                continue
+            if link_text in {"Save", "More", "Check availability", "Previous page", "Next page"}:
+                continue
+            if "Page " in link_text or "Apartments for Rent" in link_text or "Houses for Rent" in link_text:
+                continue
+            if "|" not in link_text and not self._looks_like_listing_address(link_text):
+                continue
+
+            container = self._listing_container(anchor)
+            if container is None:
+                continue
+
+            block_text = container.get_text(" ", strip=True)
+            if "$" not in block_text:
+                continue
+
+            url = urljoin("https://www.zillow.com", href)
+            if not self._looks_like_listing_url(url):
+                continue
+            if url in seen_urls:
+                continue
+
+            parsed = self._parse_html_listing(url, link_text, block_text, container)
+            if not parsed:
+                continue
+
+            added = False
+            for listing in parsed:
+                listing_url = listing.get("url")
+                dedupe_key = f"{listing_url}|{listing.get('bedrooms')}|{listing.get('price')}"
+                if dedupe_key in seen_urls:
+                    continue
+                seen_urls.add(dedupe_key)
+                listings.append(listing)
+                added = True
+
+            if added:
+                seen_urls.add(url)
+
+        return listings
+
+    def _listing_container(self, anchor):
+        node = anchor
+        for _ in range(6):
+            node = node.parent
+            if node is None:
+                return None
+            text = node.get_text(" ", strip=True)
+            if "$" in text and len(text) >= 40:
+                return node
+        return anchor.parent
+
+    def _parse_html_listing(self, url: str, link_text: str, block_text: str, container) -> list[dict]:
+        title, address = self._split_title_address(link_text)
+        zipcode = self._extract_zipcode(address or block_text)
+        image = None
+        image_el = container.select_one("img")
+        if image_el:
+            image = image_el.get("src") or image_el.get("data-src")
+
+        unit_matches = []
+        for match in re.finditer(r"(\$[\d,]+(?:\+|/mo)?)\s*(Studio|\d+\s*bd\+?|\d+\s*bd)?", block_text, re.I):
+            price_text = match.group(1)
+            bed_text = match.group(2)
+            beds = 0 if bed_text and bed_text.lower().startswith("studio") else _parse_beds(bed_text or "")
+            unit_matches.append((_parse_price(price_text), beds))
+
+        listings: list[dict] = []
+        for price, beds in unit_matches:
+            if not self._bedroom_matches(beds):
+                continue
+            listing_title = title or address or link_text
+            if beds is not None and "|" in link_text:
+                listing_title = f"{listing_title} - {beds}bd" if beds > 0 else f"{listing_title} - Studio"
+            listings.append({
+                "url": url,
+                "title": listing_title,
+                "price": price,
+                "bedrooms": beds,
+                "bathrooms": _parse_baths(block_text),
+                "address": address or link_text,
+                "zipcode": zipcode,
+                "lat": None,
+                "lng": None,
+                "pets_allowed": None,
+                "available_date": None,
+                "source": "zillow",
+                "image_url": image,
+                "description": None,
+            })
+
+        if listings:
+            return listings
+
+        price = _parse_price(block_text)
+        beds = _parse_beds(block_text)
+        if not self._bedroom_matches(beds):
+            return []
+
+        return [{
+            "url": url,
+            "title": title or address or link_text,
+            "price": price,
+            "bedrooms": beds,
+            "bathrooms": _parse_baths(block_text),
+            "address": address or link_text,
+            "zipcode": zipcode,
+            "lat": None,
+            "lng": None,
+            "pets_allowed": None,
+            "available_date": None,
+            "source": "zillow",
+            "image_url": image,
+            "description": None,
+        }]
+
+    def _split_title_address(self, link_text: str) -> tuple[str, str]:
+        if " | " in link_text:
+            title, address = link_text.split(" | ", 1)
+            return title.strip(), address.strip()
+        if self._looks_like_listing_address(link_text):
+            return link_text.strip(), link_text.strip()
+        return link_text.strip(), ""
+
+    def _bedroom_matches(self, beds: int | None) -> bool:
+        min_beds = self.criteria.get("min_bedrooms")
+        max_beds = self.criteria.get("max_bedrooms")
+        if min_beds is not None and beds is not None and beds < min_beds:
+            return False
+        if max_beds is not None and beds is not None and beds > max_beds:
+            return False
+        return True
+
+    def _looks_like_listing_url(self, url: str) -> bool:
+        return any(
+            token in url
+            for token in ("/b/", "/homedetails/", "_zpid", "/apartments/", "/community/")
+        )
+
+    def _looks_like_listing_address(self, text: str) -> bool:
+        return bool(re.search(r"\d", text) and "," in text)
+
+    def _extract_zipcode(self, text: str) -> str | None:
+        match = re.search(r"\b(\d{5})(?:-\d{4})?\b", text or "")
+        return match.group(1) if match else None
+
 
 def _parse_price(text: str) -> int | None:
     text = text.replace(",", "").replace("+", "")
     m = re.search(r"\$?([\d]+)", text)
     return int(m.group(1)) if m else None
+
+
+def _parse_beds(text: str) -> int | None:
+    if re.search(r"studio", text, re.I):
+        return 0
+    match = re.search(r"(\d+)\s*bd", text, re.I)
+    return int(match.group(1)) if match else None
+
+
+def _parse_baths(text: str) -> float | None:
+    match = re.search(r"([\d.]+)\s*ba", text, re.I)
+    return float(match.group(1)) if match else None
