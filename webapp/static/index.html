@@ -1020,7 +1020,7 @@
   }
 
   // Preferences are stored per-email so each user has their own
-  function prefsKey() { return `prefs-${userEmail}`; }
+  function prefsKey() { return `prefs-${(userEmail||'').replace(/@/g,'_at_')}`; }
 
   async function loadPrefs() {
     try {
@@ -1327,7 +1327,7 @@
   }
 
   function savedSearchesKey() {
-    return `${SAVED_SEARCHES_PREFIX}${userEmail}`;
+    return `${SAVED_SEARCHES_PREFIX}${(userEmail||'').replace(/@/g,'_at_')}`;
   }
 
   async function loadSavedSearchRecords() {
