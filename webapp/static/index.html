@@ -815,6 +815,7 @@
 
 <script>
   const ACTOR_ID = 'jta93~aptsearch';
+  const ACTOR_ID_RAW = 'naLyFUIVoGWliS7k9'; // required by schedule API; slug not accepted
   const PREFS_STORE = '~apt-search-prefs';
   const SCHEDULE_MARKER = 'APTSEARCH_V1';
   const SAVED_SEARCHES_PREFIX = 'saved-searches-';
@@ -1409,7 +1410,7 @@
       }),
       actions: [{
         type: 'RUN_ACTOR',
-        actorId: ACTOR_ID,
+        actorId: ACTOR_ID_RAW,
         runInput: {
           body: JSON.stringify(runInput),
           contentType: 'application/json; charset=utf-8',
@@ -1421,7 +1422,7 @@
   function parseScheduleRecord(schedule) {
     let meta = {};
     try { meta = JSON.parse(schedule.description || '{}'); } catch {}
-    const action = (schedule.actions || []).find(a => a.type === 'RUN_ACTOR' && a.actorId === ACTOR_ID) || {};
+    const action = (schedule.actions || []).find(a => a.type === 'RUN_ACTOR' && (a.actorId === ACTOR_ID || a.actorId === ACTOR_ID_RAW)) || {};
     let input = {};
     try { input = JSON.parse(action.runInput?.body || '{}'); } catch {}
     return { meta, input };
