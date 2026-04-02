@@ -1549,14 +1549,24 @@
       };
       let r;
       if (scheduleId) {
-        // Try to update existing schedule; fall back to create if it no longer exists
+        // Try to update existing schedule
         r = await apifyFetch(`/schedules/${scheduleId}`, { method: 'PUT', ...fetchOpts });
-        if (r.status === 404) {
-          scheduleId = null;
-          r = await apifyFetch('/schedules', { method: 'POST', ...fetchOpts });
-        }
-      } else {
+        if (!r.ok) scheduleId = null; // fall through to create/find
+      }
+      if (!scheduleId) {
         r = await apifyFetch('/schedules', { method: 'POST', ...fetchOpts });
+        if (!r.ok) {
+          // Name conflict or other error — try to find existing schedule by name and update it
+          const listR = await apifyFetch('/schedules?limit=100');
+          if (listR.ok) {
+            const { data } = await listR.json().catch(() => ({}));
+            const match = (data?.items || []).find(s => s.name === savedSearchId);
+            if (match) {
+              scheduleId = match.id;
+              r = await apifyFetch(`/schedules/${scheduleId}`, { method: 'PUT', ...fetchOpts });
+            }
+          }
+        }
       }
       if (!r.ok) {
         let errMsg = 'Could not save scheduled search';
@@ -1565,14 +1575,15 @@
           const errBody = JSON.parse(text);
           const detail = errBody?.error?.message || errBody?.message || '';
           if (detail) errMsg += `: ${detail}`;
-          else if (text) errMsg += ` (HTTP ${r.status})`;
+          else errMsg += ` (HTTP ${r.status})`;
         } catch {}
         console.error('Schedule save failed', r.status, errMsg);
-        showSaveStatus(errMsg, true);
+        alert(errMsg);
         return;
       }
       const body = await r.json().catch(() => ({}));
       scheduleId = body?.data?.id || scheduleId;
+      console.log('Schedule saved, id:', scheduleId);
     }
 
     const records = await loadSavedSearchRecords();
