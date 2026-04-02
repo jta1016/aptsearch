@@ -1309,7 +1309,8 @@
 
   function toggleScheduleOptions() {
     const on = document.getElementById('sched-auto-toggle').checked;
-    document.getElementById('sched-freq').value = on ? (document.getElementById('sched-freq').value || 'daily') : 'manual';
+    const cur = document.getElementById('sched-freq').value;
+    document.getElementById('sched-freq').value = on ? (cur === 'manual' ? 'daily' : cur) : 'manual';
     document.getElementById('sched-timing-fields').style.display = on ? 'block' : 'none';
   }
 
