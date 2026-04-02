@@ -124,6 +124,15 @@ class CraigslistScraper:
         bedrooms = _extract_beds(meta_text)
         bathrooms = _extract_baths(meta_text)
 
+        # Image — Craigslist includes thumbnails in search results
+        image_url = None
+        img_el = item.select_one("img")
+        if img_el:
+            src = img_el.get("src") or img_el.get("data-src") or ""
+            if "images.craigslist.org" in src or "cl-img" in src:
+                # Prefer full-size over tiny thumbnail: swap 50x50/300x300 → 600x450
+                image_url = re.sub(r"_\d+x\d+\.jpg$", "_600x450.jpg", src) if re.search(r"_\d+x\d+\.jpg$", src) else src
+
         return {
             "url": url,
             "title": title,
@@ -137,7 +146,7 @@ class CraigslistScraper:
             "pets_allowed": None,
             "available_date": None,
             "source": "craigslist",
-            "image_url": None,
+            "image_url": image_url,
             "description": None,
         }
 
