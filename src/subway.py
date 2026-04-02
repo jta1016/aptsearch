@@ -300,7 +300,7 @@ def subway_score(lat: Optional[float], lng: Optional[float], max_miles: float, p
     Bonus if preferred lines are served.
     """
     if lat is None or lng is None:
-        return 0.5, None  # neutral if no coordinates
+        return 0.75, None  # neutral if no coordinates — don't penalize missing geodata
 
     station = nearest_station(lat, lng)
     dist = station["distance_miles"]

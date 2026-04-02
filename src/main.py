@@ -27,6 +27,34 @@ SCRAPER_MAP = {
 }
 
 
+def _diverse_top_n(listings: list[dict], n: int, active_sites: list[str]) -> list[dict]:
+    """
+    Return top n listings with per-source diversity: no single source can
+    contribute more than half the results. Remaining slots are filled from
+    overflow in score order so quality is preserved.
+    """
+    num_sources = max(1, len(active_sites))
+    cap = max(3, n // 2)  # at most 50% from any one source
+    from collections import defaultdict
+    counts: dict = defaultdict(int)
+    result, overflow = [], []
+    for listing in listings:
+        src = listing.get("source", "")
+        if counts[src] < cap:
+            counts[src] += 1
+            result.append(listing)
+        else:
+            overflow.append(listing)
+        if len(result) >= n:
+            break
+    # Fill any remaining slots (happens when some sources have very few results)
+    for listing in overflow:
+        if len(result) >= n:
+            break
+        result.append(listing)
+    return result[:n]
+
+
 def make_safe_store_key(prefix: str, raw_value: str) -> str:
     allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!-_.'()")
     cleaned = "".join(ch if ch in allowed else "-" for ch in (raw_value or "default"))
@@ -86,7 +114,7 @@ async def main():
         ranked = rank_listings(all_listings, criteria)
         digest_id = inp.get("digest_id") or (normalize_recipients(inp)[0] if normalize_recipients(inp) else "default")
         ranked, new_count = await prioritize_new_listings(digest_id, ranked)
-        top_n = ranked[: criteria["results_per_run"]]
+        top_n = _diverse_top_n(ranked, criteria["results_per_run"], criteria["sites"])
         await remember_seen_listings(digest_id, top_n)
 
         Actor.log.info(f"Returning top {len(top_n)} results")
