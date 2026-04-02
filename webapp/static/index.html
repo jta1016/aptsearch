@@ -212,6 +212,10 @@
     .checkbox-row input[type="checkbox"] { width: 15px; height: 15px; }
     .checkbox-row label { font-size: 13px; cursor: pointer; }
 
+    .amenity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+    .amenity-item { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+    .amenity-item input[type="checkbox"] { width: 14px; height: 14px; flex-shrink: 0; }
+
     .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
     .filter-actions {
@@ -671,6 +675,21 @@
       </div>
 
       <div class="field">
+        <label>Amenities</label>
+        <div class="amenity-grid">
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="gym" /> Gym</label>
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="pool" /> Pool</label>
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="doorman" /> Doorman</label>
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="central_air" /> Central A/C</label>
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="dishwasher" /> Dishwasher</label>
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="elevator" /> Elevator</label>
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="laundry_in_unit" /> In-unit W/D</label>
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="laundry_in_building" /> Laundry in building</label>
+          <label class="amenity-item"><input type="checkbox" class="f-amenity" value="parking" /> Parking</label>
+        </div>
+      </div>
+
+      <div class="field">
         <label>Results per run</label>
         <input type="number" id="f-results" value="20" min="1" max="50" />
       </div>
@@ -858,6 +877,7 @@
     preferred_subway_lines: [],
     availability_before: null,
     pets_allowed: false,
+    required_amenities: [],
     results_per_run: 20,
     sites: ['craigslist', 'padmapper', 'streeteasy', 'zillow', 'apartments_com', 'realtor'],
   };
@@ -1018,6 +1038,7 @@
       preferred_subway_lines: tags.preferred_subway_lines,
       availability_before: document.getElementById('f-avail-before').value || null,
       pets_allowed: document.getElementById('f-pets').checked,
+      required_amenities: [...document.querySelectorAll('.f-amenity:checked')].map(el => el.value),
       results_per_run: parseInt(document.getElementById('f-results').value) || 20,
       sites,
     };
@@ -1035,6 +1056,8 @@
     document.getElementById('f-subway-dist').value = prefs.max_subway_distance_miles ?? 0.5;
     document.getElementById('f-avail-before').value = prefs.availability_before || '';
     document.getElementById('f-pets').checked = prefs.pets_allowed || false;
+    const amenitySet = new Set(prefs.required_amenities || []);
+    document.querySelectorAll('.f-amenity').forEach(el => { el.checked = amenitySet.has(el.value); });
     document.getElementById('f-results').value = prefs.results_per_run || 20;
     setTags('zipcodes', prefs.zipcodes);
     setTags('neighborhoods', prefs.neighborhoods);
@@ -1119,6 +1142,11 @@
       if (!el || el.dataset.autosaveBound === '1') return;
       el.dataset.autosaveBound = '1';
       el.addEventListener('input', queuePrefsSave);
+      el.addEventListener('change', queuePrefsSave);
+    });
+    document.querySelectorAll('.f-amenity').forEach(el => {
+      if (el.dataset.autosaveBound === '1') return;
+      el.dataset.autosaveBound = '1';
       el.addEventListener('change', queuePrefsSave);
     });
   }

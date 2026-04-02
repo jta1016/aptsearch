@@ -556,14 +556,20 @@ class ApartmentsComScraper:
 
         price = _as_float(item.get("lowPrice")) or offer_price or _as_float(item.get("highPrice"))
         description = item.get("description")
-        amenities = item.get("amenityFeature") or item.get("amenities")
-        if isinstance(amenities, list):
-            amenity_text = ", ".join(
-                feature.get("name") if isinstance(feature, dict) else str(feature)
-                for feature in amenities
-                if feature
-            )
-            description = description or amenity_text
+        amenity_names: list[str] = []
+        raw_amenities = item.get("amenityFeature") or item.get("amenities")
+        if isinstance(raw_amenities, list):
+            for feature in raw_amenities:
+                if isinstance(feature, dict):
+                    name = feature.get("name") or feature.get("value") or ""
+                elif isinstance(feature, str):
+                    name = feature
+                else:
+                    name = ""
+                if name:
+                    amenity_names.append(name)
+            if amenity_names and not description:
+                description = ", ".join(amenity_names)
 
         return {
             "url": url,
@@ -580,6 +586,7 @@ class ApartmentsComScraper:
             "source": "apartments_com",
             "image_url": _extract_image_url(item.get("image")),
             "description": description,
+            "amenities": amenity_names,
         }
 
     def _matches_criteria(self, listing: dict) -> bool:

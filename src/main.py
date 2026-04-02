@@ -53,6 +53,7 @@ async def main():
             "availability_before": inp.get("availability_before"),
             "max_subway_distance_miles": inp.get("max_subway_distance_miles"),
             "preferred_subway_lines": inp.get("preferred_subway_lines") or [],
+            "required_amenities": inp.get("required_amenities") or [],
             "results_per_run": inp.get("results_per_run", 20),
             "sites": inp.get("sites") or ["craigslist", "padmapper", "streeteasy", "zillow", "apartments_com", "realtor"],
         }

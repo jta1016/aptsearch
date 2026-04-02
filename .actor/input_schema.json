@@ -94,6 +94,13 @@
       "description": "Which listing sites to scrape",
       "editor": "stringList",
       "default": ["craigslist", "padmapper", "zillow", "apartments_com", "realtor"]
+    },
+    "required_amenities": {
+      "title": "Required Amenities",
+      "type": "array",
+      "description": "Boost listings that have these amenities. Options: gym, pool, doorman, central_air, laundry_in_unit, laundry_in_building, dishwasher, elevator, parking",
+      "editor": "stringList",
+      "default": []
     }
   },
   "required": []

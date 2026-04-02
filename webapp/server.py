@@ -34,6 +34,7 @@ class Preferences(BaseModel):
     max_bedrooms: int | None = None
     min_bathrooms: float = 1
     pets_allowed: bool = False
+    required_amenities: list[str] = []
     max_subway_distance_miles: float = 0.5
     preferred_subway_lines: list[str] = []
     availability_before: str | None = None

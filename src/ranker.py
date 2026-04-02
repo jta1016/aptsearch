@@ -8,10 +8,23 @@ Scoring weights (total 100 pts):
   Pets allowed        20  (only if pets_allowed=True in criteria)
   Subway proximity    15
   Availability date    5
+  Amenities           20  (only if required_amenities is set in criteria)
 """
 from datetime import datetime
 from typing import Optional
 from subway import subway_score
+
+AMENITY_KEYWORDS: dict[str, list[str]] = {
+    "gym": ["gym", "fitness center", "fitness room", "workout room"],
+    "pool": ["pool", "swimming pool", "rooftop pool"],
+    "doorman": ["doorman", "concierge", "attended lobby", "door man"],
+    "central_air": ["central air", "central a/c", "central ac", "central cooling", "central hvac"],
+    "laundry_in_unit": ["in-unit laundry", "in unit laundry", "w/d in unit", "washer/dryer in unit", "in-unit w/d", "washer dryer in unit"],
+    "laundry_in_building": ["laundry in building", "laundry room", "shared laundry", "common laundry", "on-site laundry", "building laundry"],
+    "dishwasher": ["dishwasher"],
+    "elevator": ["elevator"],
+    "parking": ["parking", "parking garage", "garage parking", "covered parking"],
+}
 
 
 def rank_listings(listings: list[dict], criteria: dict) -> list[dict]:
@@ -132,6 +145,29 @@ def score_listing(listing: dict, criteria: dict) -> tuple[float, dict]:
     else:
         detail["availability"] = 5
         total += 5
+
+    # --- Amenities (20 pts, only if required) ---
+    required_amenities = [a.lower() for a in (criteria.get("required_amenities") or [])]
+    if required_amenities:
+        listing_amenities = " ".join(a.lower() for a in (listing.get("amenities") or []))
+        desc = (listing.get("description") or "").lower()
+        has_amenity_data = bool(listing_amenities or desc)
+        searchable = listing_amenities + " " + desc
+
+        matched = 0
+        unknown = 0
+        for amenity in required_amenities:
+            keywords = AMENITY_KEYWORDS.get(amenity, [amenity])
+            if any(kw in searchable for kw in keywords):
+                matched += 1
+            elif not has_amenity_data:
+                unknown += 1  # no data to confirm or deny
+        pts = round(20 * (matched + 0.4 * unknown) / len(required_amenities), 1)
+        detail["amenities"] = pts
+        total += pts
+    else:
+        detail["amenities"] = 20
+        total += 20
 
     # --- Neighborhood fuzzy match (bonus: up to 10 pts) ---
     # Uses case-insensitive substring matching so "park slope", "Park Slope",
