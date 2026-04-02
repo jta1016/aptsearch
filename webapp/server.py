@@ -8,9 +8,9 @@ import json
 import os
 import httpx
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN", "")
@@ -121,6 +121,35 @@ async def run_results(run_id: str):
         )
         r2.raise_for_status()
         return {"items": r2.json()}
+
+
+@app.api_route("/api/apify", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def apify_proxy(request: Request, path: str = ""):
+    """Generic proxy to Apify API — keeps the token server-side."""
+    if not APIFY_TOKEN:
+        raise HTTPException(500, "APIFY_TOKEN not set")
+
+    url = f"{APIFY_BASE}{path}"
+    body = await request.body()
+
+    forward_headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+    if request.headers.get("content-type"):
+        forward_headers["Content-Type"] = request.headers["content-type"]
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.request(
+            method=request.method,
+            url=url,
+            content=body or None,
+            headers=forward_headers,
+            params={k: v for k, v in request.query_params.items() if k != "path"},
+        )
+
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/json"),
+    )
 
 
 @app.get("/api/results/latest")
