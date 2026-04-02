@@ -901,6 +901,7 @@
   let scheduleEditId = null;
   let savedSearchEditId = null;
   let apifyUserId = null;
+  let resolvedActorId = null;
 
   // All Apify calls go through our server-side proxy so the token stays secret
   function apifyFetch(path, options = {}) {
@@ -914,6 +915,19 @@
     const { data } = await r.json();
     apifyUserId = data.id;
     return apifyUserId;
+  }
+
+  async function getActorId() {
+    if (resolvedActorId) return resolvedActorId;
+    try {
+      const r = await apifyFetch(`/acts/${ACTOR_ID}`);
+      if (r.ok) {
+        const { data } = await r.json();
+        resolvedActorId = data.id;
+        return resolvedActorId;
+      }
+    } catch {}
+    return ACTOR_ID_RAW; // fallback to hardcoded UUID
   }
 
   // ── Setup ───────────────────────────────────────────────────────────────────
@@ -1422,7 +1436,7 @@
     };
   }
 
-  function buildSchedulePayload(savedSearchId) {
+  async function buildSchedulePayload(savedSearchId) {
     const prefs = buildPrefs();
     const freq = document.getElementById('sched-freq').value;
     const hour = parseInt(document.getElementById('sched-hour').value, 10);
@@ -1467,7 +1481,7 @@
       }),
       actions: [{
         type: 'RUN_ACTOR',
-        actorId: ACTOR_ID_RAW,
+        actorId: await getActorId(),
         runInput: {
           body: JSON.stringify(runInput),
           contentType: 'application/json; charset=utf-8',
@@ -1531,6 +1545,7 @@
     const frequency = document.getElementById('sched-freq').value;
     const savedSearchId = savedSearchEditId || `saved-search-${Date.now()}`;
     let scheduleId = scheduleEditId;
+    let nextRunAt = null;
 
     if (frequency === 'manual') {
       if (scheduleId) {
@@ -1542,7 +1557,7 @@
       }
       scheduleId = null;
     } else {
-      const payload = buildSchedulePayload(savedSearchId);
+      const payload = await buildSchedulePayload(savedSearchId);
       const fetchOpts = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1583,7 +1598,8 @@
       }
       const body = await r.json().catch(() => ({}));
       scheduleId = body?.data?.id || scheduleId;
-      console.log('Schedule saved, id:', scheduleId);
+      nextRunAt = body?.data?.nextRunAt || null;
+      console.log('Schedule saved, id:', scheduleId, 'nextRunAt:', nextRunAt);
     }
 
     const records = await loadSavedSearchRecords();
@@ -1599,6 +1615,7 @@
       emailMode: document.getElementById('sched-email-mode').value,
       extraRecipients: parseEmailList(document.getElementById('sched-extra-emails').value.trim()),
       scheduleId,
+      nextSearchAt: nextRunAt,
       updatedAt: new Date().toISOString(),
     });
     await saveSavedSearchRecords([...records.filter(record => record.id !== savedSearchId), nextRecord]);
