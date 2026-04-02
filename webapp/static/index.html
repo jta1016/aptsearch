@@ -345,6 +345,17 @@
     .settings-row button:hover { border-color: var(--accent); color: var(--accent); }
     .settings-row .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
     .settings-row .btn-primary:hover { background: var(--accent-hover); color: #fff; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid var(--border); cursor: pointer; font-size: 14px; font-weight: 500; gap: 12px; }
+    .toggle-switch { position: relative; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track { display: block; width: 44px; height: 26px; border-radius: 13px; background: var(--border); cursor: pointer; transition: background 0.2s; position: relative; }
+    .toggle-track::after { content: ''; position: absolute; width: 20px; height: 20px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+    .toggle-switch input:checked + .toggle-track { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-track::after { left: 21px; }
+    .seg-group { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg-btn { flex: 1; padding: 8px; border: none; background: var(--surface); font-size: 13px; cursor: pointer; border-right: 1px solid var(--border); }
+    .seg-btn:last-child { border-right: none; }
+    .seg-btn.active { background: var(--accent); color: #fff; font-weight: 600; }
 
     /* ── Schedule section ── */
     .schedule-item {
@@ -727,22 +738,33 @@
             <button class="btn btn-primary" type="button" onclick="openSaveSearch()">Save Current Search</button>
           </div>
 
-          <div id="sched-editor" class="schedule-form-card">
+          <div id="sched-editor" class="schedule-form-card" style="display:none">
             <div class="field">
               <label>Search Name</label>
-              <input type="text" id="sched-name" placeholder="Park Slope under $3,200" />
+              <input type="text" id="sched-name" placeholder="e.g. LIC under $3k" />
             </div>
 
-            <div class="field">
-              <label>Schedule</label>
-              <select id="sched-freq" onchange="toggleScheduleOptions()">
-                <option value="manual">Save only</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-              </select>
-            </div>
+            <label class="toggle-row">
+              <span>Run automatically</span>
+              <span class="toggle-switch">
+                <input type="checkbox" id="sched-auto-toggle" onchange="toggleScheduleOptions()" />
+                <span class="toggle-track"></span>
+              </span>
+            </label>
 
-            <div id="sched-timing-fields">
+            <!-- hidden for JS compat -->
+            <input type="hidden" id="sched-freq" value="daily" />
+            <input type="hidden" id="sched-email-mode" value="digest" />
+
+            <div id="sched-timing-fields" style="display:none">
+              <div class="field" style="margin-top:12px">
+                <label>Frequency</label>
+                <div class="seg-group">
+                  <button class="seg-btn active" data-freq="daily" type="button" onclick="setSchedFreq(this)">Daily</button>
+                  <button class="seg-btn" data-freq="weekly" type="button" onclick="setSchedFreq(this)">Weekly</button>
+                </div>
+              </div>
+
               <div class="field" id="sched-day-wrap" style="display:none">
                 <label>Day</label>
                 <select id="sched-day">
@@ -758,11 +780,11 @@
 
               <div class="field-row">
                 <div class="field">
-                  <label>Hour</label>
+                  <label>Time</label>
                   <select id="sched-hour"></select>
                 </div>
                 <div class="field">
-                  <label>Minute</label>
+                  <label>&nbsp;</label>
                   <select id="sched-minute">
                     <option value="0">:00</option>
                     <option value="15">:15</option>
@@ -787,25 +809,23 @@
                   <option value="UTC">UTC</option>
                 </select>
               </div>
+
+              <label class="toggle-row" style="margin-top:4px">
+                <span>Email me results</span>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="sched-email-toggle" onchange="toggleScheduleEmailOptions()" checked />
+                  <span class="toggle-track"></span>
+                </span>
+              </label>
+
+              <div class="field" id="sched-email-options">
+                <label>CC recipients</label>
+                <input type="text" id="sched-extra-emails" placeholder="Optional, comma separated" />
+              </div>
             </div>
 
-            <div class="field">
-              <label>Email Delivery</label>
-              <select id="sched-email-mode" onchange="toggleScheduleEmailOptions()">
-                <option value="digest">Send digest email</option>
-                <option value="none">No email</option>
-              </select>
-            </div>
-
-            <div class="field" id="sched-email-options">
-              <label>Extra Recipients</label>
-              <input type="text" id="sched-extra-emails" placeholder="Optional, comma separated" />
-            </div>
-
-            <div class="settings-row" style="margin-top:12px">
-              <button class="btn" type="button" onclick="cancelScheduleEdit()">Cancel</button>
-              <button class="btn btn-primary" type="button" onclick="saveSchedule()" id="schedule-submit-btn">Save Search</button>
-            </div>
+            <button class="btn btn-primary" style="width:100%;margin-top:16px" type="button" onclick="saveSchedule()" id="schedule-submit-btn">Save Search</button>
+            <button class="btn" style="width:100%;margin-top:8px" type="button" onclick="cancelScheduleEdit()">Cancel</button>
           </div>
 
           <div id="saved-schedules" style="margin-top:16px"></div>
@@ -1280,22 +1300,23 @@
     }
   }
 
-  function toggleScheduleDay() {
-    const isWeekly = document.getElementById('sched-freq').value === 'weekly';
-    document.getElementById('sched-day-wrap').style.display = isWeekly ? 'block' : 'none';
+  function setSchedFreq(btn) {
+    const freq = btn.dataset.freq;
+    document.getElementById('sched-freq').value = freq;
+    document.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('sched-day-wrap').style.display = freq === 'weekly' ? 'block' : 'none';
   }
 
   function toggleScheduleOptions() {
-    const isManual = document.getElementById('sched-freq').value === 'manual';
-    document.getElementById('sched-timing-fields').style.display = isManual ? 'none' : 'block';
-    toggleScheduleDay();
-    toggleScheduleEmailOptions();
+    const on = document.getElementById('sched-auto-toggle').checked;
+    document.getElementById('sched-freq').value = on ? (document.getElementById('sched-freq').value || 'daily') : 'manual';
+    document.getElementById('sched-timing-fields').style.display = on ? 'block' : 'none';
   }
 
   function toggleScheduleEmailOptions() {
-    const mode = document.getElementById('sched-email-mode').value;
-    const isManual = document.getElementById('sched-freq').value === 'manual';
-    document.getElementById('sched-email-options').style.display = mode === 'none' || isManual ? 'none' : 'block';
+    const on = document.getElementById('sched-email-toggle').checked;
+    document.getElementById('sched-email-mode').value = on ? 'digest' : 'none';
+    document.getElementById('sched-email-options').style.display = on ? 'block' : 'none';
   }
 
   function parseEmailList(value) {
@@ -1563,31 +1584,40 @@
     savedSearchEditId = saved.id;
     scheduleEditId = saved.scheduleId;
     applyPrefs(saved.prefs);
+    const isAuto = saved.frequency && saved.frequency !== 'manual';
+    const freq = isAuto ? saved.frequency : 'daily';
     document.getElementById('sched-name').value = saved.title || '';
-    document.getElementById('sched-freq').value = saved.frequency;
-    document.getElementById('sched-day').value = saved.day;
-    document.getElementById('sched-hour').value = saved.hour;
-    document.getElementById('sched-minute').value = saved.minute;
-    document.getElementById('sched-tz').value = saved.timezone || 'America/Chicago';
-    document.getElementById('sched-email-mode').value = saved.emailMode;
+    document.getElementById('sched-freq').value = freq;
+    document.getElementById('sched-day').value = saved.day || 'MON';
+    document.getElementById('sched-hour').value = saved.hour || '8';
+    document.getElementById('sched-minute').value = saved.minute || '0';
+    document.getElementById('sched-tz').value = saved.timezone || 'America/New_York';
+    document.getElementById('sched-email-mode').value = saved.emailMode || 'digest';
     document.getElementById('sched-extra-emails').value = (saved.extraRecipients || []).join(', ');
+    document.getElementById('sched-auto-toggle').checked = isAuto;
+    document.getElementById('sched-email-toggle').checked = (saved.emailMode || 'digest') !== 'none';
     document.getElementById('schedule-submit-btn').textContent = 'Update Search';
+    // sync seg buttons
+    document.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.freq === freq));
+    document.getElementById('sched-editor').style.display = 'block';
     toggleScheduleOptions();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function cancelScheduleEdit() {
     savedSearchEditId = null;
     scheduleEditId = null;
     document.getElementById('sched-name').value = '';
-    document.getElementById('sched-freq').value = 'manual';
+    document.getElementById('sched-freq').value = 'daily';
     document.getElementById('sched-day').value = 'MON';
     document.getElementById('sched-hour').value = '8';
     document.getElementById('sched-minute').value = '0';
-    document.getElementById('sched-tz').value = 'America/Chicago';
+    document.getElementById('sched-tz').value = 'America/New_York';
     document.getElementById('sched-email-mode').value = 'digest';
     document.getElementById('sched-extra-emails').value = '';
+    document.getElementById('sched-auto-toggle').checked = false;
+    document.getElementById('sched-email-toggle').checked = true;
     document.getElementById('schedule-submit-btn').textContent = 'Save Search';
+    document.getElementById('sched-editor').style.display = 'none';
     toggleScheduleOptions();
   }
 
@@ -1710,8 +1740,9 @@
     }
     const settingsTab = document.querySelectorAll('.tab')[1];
     if (settingsTab) switchTab('settings', settingsTab);
+    document.getElementById('sched-editor').style.display = 'block';
     toggleScheduleOptions();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.getElementById('sched-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function handleLinkActions() {
