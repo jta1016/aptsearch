@@ -745,7 +745,10 @@
             </div>
 
             <label class="toggle-row">
-              <span>Run automatically</span>
+              <span>
+                <div>Send email digest automatically</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px">Run a search on a schedule and email you the results</div>
+              </span>
               <span class="toggle-switch">
                 <input type="checkbox" id="sched-auto-toggle" onchange="toggleScheduleOptions()" />
                 <span class="toggle-track"></span>
@@ -1058,7 +1061,7 @@
     applyPrefs(DEFAULT_PREFS);
   }
 
-  async function savePrefs() {
+  async function savePrefs(silent = false) {
     const prefs = buildPrefs();
     prefs.email = prefs.email || userEmail;
     localStorage.setItem('apt_prefs', JSON.stringify(prefs));
@@ -1072,15 +1075,16 @@
       });
     } catch {}
 
-    showSaveStatus('Saved automatically');
+    if (!silent) showSaveStatus('Saved automatically');
   }
 
-  function showSaveStatus(message) {
+  function showSaveStatus(message, isError = false) {
     const s = document.getElementById('save-status');
     if (!s) return;
     s.textContent = message;
+    s.style.color = isError ? 'var(--red, #d32f2f)' : '';
     clearTimeout(saveStatusTimer);
-    saveStatusTimer = setTimeout(() => { s.textContent = ''; }, 1800);
+    saveStatusTimer = setTimeout(() => { s.textContent = ''; s.style.color = ''; }, isError ? 5000 : 1800);
   }
 
   function queuePrefsSave() {
@@ -1492,7 +1496,7 @@
 
   async function saveSchedule() {
     flushTagInputs();
-    await savePrefs();
+    await savePrefs(true);
     const isEditing = Boolean(savedSearchEditId);
     const prefs = buildPrefs();
     const frequency = document.getElementById('sched-freq').value;
@@ -1512,8 +1516,8 @@
       let userId;
       try {
         userId = await getApifyUserId();
-      } catch {
-        showSaveStatus('Could not load schedule account');
+      } catch (e) {
+        showSaveStatus('Could not connect to schedule service — check your account', true);
         return;
       }
       const payload = buildSchedulePayload(userId, savedSearchId);
@@ -1525,7 +1529,13 @@
         body: JSON.stringify(payload),
       });
       if (!r.ok) {
-        showSaveStatus('Could not save search');
+        let errMsg = 'Could not save scheduled search';
+        try {
+          const errBody = await r.json();
+          const detail = errBody?.error?.message || errBody?.message || '';
+          if (detail) errMsg += `: ${detail}`;
+        } catch {}
+        showSaveStatus(errMsg, true);
         return;
       }
       const body = await r.json().catch(() => ({}));
