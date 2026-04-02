@@ -1698,17 +1698,28 @@
     let remoteSchedules = [];
     if (r && r.ok) {
       const { data } = await r.json();
+      // Build lookup sets so we can match schedules even when description is missing
+      const localIds = new Set(savedRecords.map(rec => rec.id));
+      const localScheduleIds = new Set(savedRecords.map(rec => rec.scheduleId).filter(Boolean));
       remoteSchedules = (data.items || []).filter(schedule => {
         const { meta } = parseScheduleRecord(schedule);
-        return meta.marker === SCHEDULE_MARKER && meta.ownerEmail === userEmail;
+        // Primary: match via embedded metadata in description
+        if (meta.marker === SCHEDULE_MARKER && meta.ownerEmail === userEmail) return true;
+        // Fallback: match by schedule name (= savedSearchId) or stored scheduleId
+        return localIds.has(schedule.name) || localScheduleIds.has(schedule.id);
       });
+      console.log('Remote schedules found:', remoteSchedules.length, remoteSchedules.map(s => s.name));
+    } else {
+      console.warn('Could not load remote schedules', r?.status);
     }
 
     const byId = new Map(savedRecords.map(record => [record.id, normalizeSavedSearchRecord(record)]));
     remoteSchedules.forEach(schedule => {
       const saved = scheduleToSavedSearch(schedule);
-      const existing = byId.get(saved.id);
-      byId.set(saved.id, normalizeSavedSearchRecord({ ...existing, ...saved, prefs: saved.prefs || existing?.prefs || {} }));
+      // Ensure the saved record's scheduleId is updated with the real Apify ID
+      const existing = byId.get(saved.id) || byId.get(schedule.name);
+      const mergedId = saved.id || schedule.name;
+      byId.set(mergedId, normalizeSavedSearchRecord({ ...existing, ...saved, id: mergedId, prefs: saved.prefs || existing?.prefs || {} }));
     });
 
     const searches = [...byId.values()].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
