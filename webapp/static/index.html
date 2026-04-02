@@ -1106,8 +1106,10 @@
     if (!s) return;
     s.textContent = message;
     s.style.color = isError ? 'var(--red, #d32f2f)' : '';
+    s.style.fontWeight = isError ? '600' : '';
+    if (isError) s.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     clearTimeout(saveStatusTimer);
-    saveStatusTimer = setTimeout(() => { s.textContent = ''; s.style.color = ''; }, isError ? 5000 : 1800);
+    saveStatusTimer = setTimeout(() => { s.textContent = ''; s.style.color = ''; s.style.fontWeight = ''; }, isError ? 6000 : 1800);
   }
 
   function queuePrefsSave() {
@@ -1420,7 +1422,7 @@
     };
   }
 
-  function buildSchedulePayload(userId, savedSearchId) {
+  function buildSchedulePayload(savedSearchId) {
     const prefs = buildPrefs();
     const freq = document.getElementById('sched-freq').value;
     const hour = parseInt(document.getElementById('sched-hour').value, 10);
@@ -1449,7 +1451,6 @@
     }
     return {
       name: scheduleKey,
-      userId,
       title,
       cronExpression: cronFromForm(freq, hour, minute, day),
       timezone: tz,
@@ -1541,28 +1542,32 @@
       }
       scheduleId = null;
     } else {
-      let userId;
-      try {
-        userId = await getApifyUserId();
-      } catch (e) {
-        showSaveStatus('Could not connect to schedule service — check your account', true);
-        return;
-      }
-      const payload = buildSchedulePayload(userId, savedSearchId);
-      const path = scheduleEditId ? `/schedules/${scheduleEditId}` : '/schedules';
-      const method = scheduleEditId ? 'PUT' : 'POST';
-      const r = await apifyFetch(path, {
-        method,
+      const payload = buildSchedulePayload(savedSearchId);
+      const fetchOpts = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
+      };
+      let r;
+      if (scheduleId) {
+        // Try to update existing schedule; fall back to create if it no longer exists
+        r = await apifyFetch(`/schedules/${scheduleId}`, { method: 'PUT', ...fetchOpts });
+        if (r.status === 404) {
+          scheduleId = null;
+          r = await apifyFetch('/schedules', { method: 'POST', ...fetchOpts });
+        }
+      } else {
+        r = await apifyFetch('/schedules', { method: 'POST', ...fetchOpts });
+      }
       if (!r.ok) {
         let errMsg = 'Could not save scheduled search';
         try {
-          const errBody = await r.json();
+          const text = await r.text();
+          const errBody = JSON.parse(text);
           const detail = errBody?.error?.message || errBody?.message || '';
           if (detail) errMsg += `: ${detail}`;
+          else if (text) errMsg += ` (HTTP ${r.status})`;
         } catch {}
+        console.error('Schedule save failed', r.status, errMsg);
         showSaveStatus(errMsg, true);
         return;
       }
