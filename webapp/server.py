@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN", "")
-ACTOR_ID = "jta93~aptsearch"
+ACTOR_ID = "comfy-classmate~aptsearch"
 APIFY_BASE = "https://api.apify.com/v2"
 PREFS_FILE = Path(__file__).parent / "preferences.json"
 
