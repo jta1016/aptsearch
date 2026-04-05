@@ -93,7 +93,7 @@
       "type": "array",
       "description": "Which listing sites to scrape",
       "editor": "stringList",
-      "default": ["craigslist", "padmapper", "zillow", "apartments_com", "realtor"]
+      "default": ["craigslist", "padmapper", "apartments_com", "realtor"]
     },
     "required_amenities": {
       "title": "Required Amenities",
