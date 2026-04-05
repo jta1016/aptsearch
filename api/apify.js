@@ -1,7 +1,7 @@
 /**
  * Vercel serverless function — proxies Apify API calls server-side
  * so the token is never exposed in the browser.
- * Frontend calls: /api/apify?path=/acts/jta93~aptsearch/runs
+ * Frontend calls: /api/apify?path=/acts/comfy-classmate~aptsearch/runs
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
