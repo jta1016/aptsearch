@@ -5,6 +5,7 @@ Uses the HTML search page — no browser required.
 import re
 import httpx
 from bs4 import BeautifulSoup
+from proxy_support import get_proxy_url
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -22,13 +23,20 @@ class CraigslistScraper:
         listings = []
         targets = self._build_targets()
 
-        async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
-            for params in targets:
+        for params in targets:
+            session_id = f"craigslist_{params.get('postal', 'nyc')}"
+            proxy_url = await get_proxy_url("craigslist", session_id=session_id)
+            client_kwargs = dict(headers=HEADERS, timeout=30, follow_redirects=True)
+            if proxy_url:
+                client_kwargs["proxy"] = proxy_url
+
+            async with httpx.AsyncClient(**client_kwargs) as client:
                 try:
                     results = await self._fetch_page(client, params)
+                    print(f"[craigslist] params={params} -> {len(results)} results")
                     listings.extend(results)
                 except Exception as e:
-                    print(f"[craigslist] error for params {params}: {e}")
+                    print(f"[craigslist] error for params {params}: {type(e).__name__}: {e}")
 
         # Deduplicate by URL
         seen = set()
@@ -82,6 +90,8 @@ class CraigslistScraper:
             # Fallback selectors for older designs
             items = soup.select("li.cl-search-result") or soup.select("li.result-row")
 
+        print(f"[craigslist] _parse: found {len(items)} raw items")
+
         for item in items:
             try:
                 listing = self._parse_item(item)
@@ -119,7 +129,7 @@ class CraigslistScraper:
         loc_el = item.select_one(".location") or item.select_one(".meta .separator + span") or item.select_one(".result-hood")
         address = loc_el.get_text(strip=True).strip("() ") if loc_el else ""
 
-        # Beds/baths from full text
+        # Beds/baths from full text — match BR, BD, bed, bedroom formats
         meta_text = item.get_text(" ", strip=True)
         bedrooms = _extract_beds(meta_text)
         bathrooms = _extract_baths(meta_text)
@@ -130,7 +140,6 @@ class CraigslistScraper:
         if img_el:
             src = img_el.get("src") or img_el.get("data-src") or ""
             if "images.craigslist.org" in src or "cl-img" in src:
-                # Prefer full-size over tiny thumbnail: swap 50x50/300x300 → 600x450
                 image_url = re.sub(r"_\d+x\d+\.jpg$", "_600x450.jpg", src) if re.search(r"_\d+x\d+\.jpg$", src) else src
 
         return {
@@ -157,7 +166,8 @@ def _parse_price(text: str) -> int | None:
 
 
 def _extract_beds(text: str) -> int | None:
-    m = re.search(r"(\d+)\s*(?:br|bed|bedroom)", text, re.I)
+    # Match "3BR", "3 BR", "3 bed", "3 bedroom", "3bd", "3 BD"
+    m = re.search(r"(\d+)\s*(?:bd|br|bed|bedroom)s?\b", text, re.I)
     if m:
         return int(m.group(1))
     if re.search(r"\bstudio\b", text, re.I):
@@ -166,5 +176,5 @@ def _extract_beds(text: str) -> int | None:
 
 
 def _extract_baths(text: str) -> float | None:
-    m = re.search(r"([\d.]+)\s*(?:ba|bath|bathroom)", text, re.I)
+    m = re.search(r"([\d.]+)\s*(?:ba|bath|bathroom)s?\b", text, re.I)
     return float(m.group(1)) if m else None

@@ -8,6 +8,7 @@ import json
 from typing import Any
 
 import httpx
+from proxy_support import get_proxy_url
 
 HEADERS = {
     "User-Agent": (
@@ -37,14 +38,19 @@ class PadmapperScraper:
     async def scrape(self) -> list[dict]:
         listings: list[dict] = []
 
-        async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
+        proxy_url = await get_proxy_url("padmapper", session_id="padmapper_nyc")
+        client_kwargs = dict(headers=HEADERS, timeout=30, follow_redirects=True)
+        if proxy_url:
+            client_kwargs["proxy"] = proxy_url
+
+        async with httpx.AsyncClient(**client_kwargs) as client:
             boxes = await self._build_boxes(client)
             for box in boxes:
                 try:
                     results = await self._fetch_box(client, box)
                     listings.extend(results)
                 except Exception as e:
-                    print(f"[padmapper] error for box {box}: {e}")
+                    print(f"[padmapper] error for box {box}: {type(e).__name__}: {e}")
 
         seen = set()
         unique = []
