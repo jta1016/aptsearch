@@ -39,7 +39,7 @@ class Preferences(BaseModel):
     preferred_subway_lines: list[str] = []
     availability_before: str | None = None
     results_per_run: int = 20
-    sites: list[str] = ["craigslist", "padmapper", "streeteasy", "apartments_com", "realtor"]
+    sites: list[str] = ["craigslist", "padmapper", "streeteasy"]
 
 
 def load_prefs() -> dict:

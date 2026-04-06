@@ -700,8 +700,7 @@
           <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-craigslist" checked /> Craigslist</label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-padmapper" checked /> PadMapper</label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-streeteasy" checked /> StreetEasy</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-apartments_com" checked /> Apartments.com</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="site-realtor" checked /> Realtor.com</label>
+
         </div>
       </div>
 
@@ -878,7 +877,7 @@
     pets_allowed: false,
     required_amenities: [],
     results_per_run: 20,
-    sites: ['craigslist', 'padmapper', 'streeteasy', 'apartments_com', 'realtor'],
+    sites: ['craigslist', 'padmapper', 'streeteasy'],
   };
   const DEFAULT_FILTER_PREFS = {
     ...DEFAULT_PREFS,
@@ -1031,7 +1030,7 @@
 
   // ── Preferences ─────────────────────────────────────────────────────────────
   function buildPrefs() {
-    const sites = ['craigslist','padmapper','streeteasy','apartments_com','realtor'].filter(s => document.getElementById(`site-${s}`).checked);
+    const sites = ['craigslist','padmapper','streeteasy'].filter(s => document.getElementById(`site-${s}`).checked);
     const minBeds = parseInt(document.getElementById('f-min-beds').value);
     const maxBeds = parseInt(document.getElementById('f-max-beds').value);
     const minBaths = parseFloat(document.getElementById('f-min-baths').value);
@@ -1076,7 +1075,7 @@
     setTags('neighborhoods', prefs.neighborhoods);
     setTags('preferred_subway_lines', prefs.preferred_subway_lines);
     const sites = prefs.sites || [];
-    ['craigslist','padmapper','streeteasy','apartments_com','realtor'].forEach(s => {
+    ['craigslist','padmapper','streeteasy'].forEach(s => {
       document.getElementById(`site-${s}`).checked = sites.includes(s);
     });
   }
@@ -1148,8 +1147,6 @@
       '#site-craigslist',
       '#site-padmapper',
       '#site-streeteasy',
-      '#site-apartments_com',
-      '#site-realtor',
     ];
     selectors.forEach(sel => {
       const el = document.querySelector(sel);
