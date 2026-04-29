@@ -217,16 +217,14 @@ async def remember_seen_listings(digest_id: str, listings: list[dict]) -> None:
 
 
 def send_results_email(recipients: list[str], listings: list, criteria: dict, inp: dict, new_count: int):
-    smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com").strip()
-    if not smtp_host or "@" in smtp_host:
-        smtp_host = "smtp.gmail.com"
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_host = "smtp.gmail.com"
+    smtp_port = 587
+    smtp_user = inp.get("smtp_user") or os.environ.get("SMTP_USER")
+    smtp_pass = inp.get("smtp_pass") or os.environ.get("SMTP_PASS")
 
     if not smtp_user or not smtp_pass:
         Actor.log.warning(
-            "Email skipped: set SMTP_USER and SMTP_PASS in Apify environment variables."
+            "Email skipped: add smtp_user and smtp_pass to the run input."
         )
         return
 

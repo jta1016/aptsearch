@@ -101,6 +101,19 @@
       "description": "Boost listings that have these amenities. Options: gym, pool, doorman, central_air, laundry_in_unit, laundry_in_building, dishwasher, elevator, parking",
       "editor": "stringList",
       "default": []
+    },
+    "smtp_user": {
+      "title": "Gmail address (for sending results)",
+      "type": "string",
+      "description": "Your Gmail address. Used to send the results email.",
+      "editor": "textfield"
+    },
+    "smtp_pass": {
+      "title": "Gmail App Password (for sending results)",
+      "type": "string",
+      "description": "A Gmail App Password (not your regular password). Generate one at myaccount.google.com → Security → App passwords.",
+      "editor": "textfield",
+      "isSecret": true
     }
   },
   "required": []
