@@ -2,12 +2,10 @@
 
 ## Current Sync State
 
-- Branch: `codex/update-scheduled-search-ui`
-- Latest Git commit: `fafc1a4`
-- Latest Apify build deployed from this branch: `0.1.25`
-- Repo status before this handoff commit:
-  - modified: `scripts/apartments_local_smoke.py`
-  - untracked: `HANDOFF.md`
+- Branch: `claude/fix-email-drafts-iWvhI` (1 commit ahead of `main`)
+- Latest Git commit: `e11048a` — "Add CLAUDE.md: document digest architecture and ban error Gmail drafts"
+- Latest Apify build deployed: `0.1.25` (built from `ff9e049`)
+- Working tree: clean
 
 ## What Is Working
 
@@ -38,27 +36,26 @@
 
 ## What Changed This Session
 
-- Added a new `StreetEasy` scraper and wired it into:
-  - `src/main.py`
-  - `webapp/server.py`
-  - `webapp/static/index.html`
-  - `test_scrapers.py`
-- Added browser/network instrumentation for blocked sources:
-  - `zillow`
-  - `apartments_com`
-  - `streeteasy`
-- Confirmed `StreetEasy` works with Apify residential proxy.
-- Reworked `apartments_com` to be HTML-first:
-  - prefer rendered HTML
-  - extract from JSON-LD
-  - extract from `article.placard`
-  - wait for `article.placard` in Playwright
-  - treat hidden API endpoints as fallback only
-- Fixed Apartments.com bedroom path logic:
-  - open-ended searches like `min_bedrooms=1` no longer force a narrow `1-bedrooms/` path
-  - filtering is now done locally from parsed HTML
-- Added local validator script:
-  - `scripts/apartments_local_smoke.py`
+### Previous session (build 0.1.25 / commit ff9e049)
+- Added a new `StreetEasy` scraper and wired it into `src/main.py`, `webapp/server.py`, `webapp/static/index.html`, `test_scrapers.py`
+- Added browser/network instrumentation for blocked sources (zillow, apartments_com, streeteasy)
+- Confirmed StreetEasy works with Apify residential proxy
+- Reworked Apartments.com to HTML-first (JSON-LD → `article.placard` → API fallback)
+- Fixed Apartments.com bedroom path logic (open-ended searches no longer force a narrow path)
+- Added `scripts/apartments_local_smoke.py`
+
+### This session (commit e11048a)
+- **Fixed recurring Gmail error-draft bug**: A scheduled Claude Code agent was trying to
+  call `api.apify.com` directly (blocked in Claude Code's network sandbox), using the wrong
+  actor ID `jta93~aptsearch` (retired), and creating a Gmail draft every time it failed.
+  Three drafts accumulated (Apr 25, Apr 26, Apr 28/29).
+- Created `CLAUDE.md` documenting the correct architecture, the correct actor IDs, and
+  explicitly prohibiting future agent sessions from creating Gmail drafts as error notifications.
+- **Pending manual step**: delete the 3 "Daily Apt Digest" error drafts from Gmail manually
+  (Gmail MCP token expired before they could be trashed programmatically).
+- **Open question left with user**: do you want to add `api.apify.com` to the Claude Code
+  network allowlist so agent sessions can optionally call Apify, or keep it firewalled and
+  rely solely on Apify's native scheduling?
 
 ## Important Live Evidence
 
@@ -90,24 +87,35 @@
 
 ## Plain-English Conclusion
 
-- The repo and actor are functionally up to date through commit `fafc1a4` / build `0.1.25`.
-- The strongest product state right now is:
-  - Craigslist
-  - PadMapper
-  - StreetEasy
-- Zillow / Apartments.com / Realtor are still anti-bot or auth blocked in the environments tested here.
-- Apartments.com parser work is in place, but it has not yet been validated against a real, unblocked listing page in this session.
+- The digest is working end-to-end: Craigslist + PadMapper + StreetEasy run on Apify's schedule
+  and email results directly via SMTP. No Claude Code involvement needed in the loop.
+- Zillow / Apartments.com / Realtor remain anti-bot blocked. Don't revisit without a materially
+  different strategy.
+- The CLAUDE.md now prevents future agent sessions from causing the draft-accumulation bug again.
+
+## To Pick Up on Mac Mini
+
+```bash
+git clone https://github.com/jta1016/aptsearch
+cd aptsearch
+git checkout claude/fix-email-drafts-iWvhI   # or merge to main if preferred
+
+pip install -r requirements.txt
+cd webapp && uvicorn server:app --reload --port 8787
+```
+
+Env vars needed locally: `APIFY_TOKEN`
 
 ## If Continuing From Here
 
-Best next moves:
-
-1. Treat `StreetEasy` as the new high-value working source and improve mapping/coverage for more NYC neighborhoods and zips.
-2. Decide whether `apartments_com` stays experimental or is dropped from default runs.
-3. If revisiting blocked sources, do it only with a materially different access strategy, not more minor header or parser tweaks.
+1. **Answer the open question**: add `api.apify.com` to `.claude/settings.json` allowlist?
+   Run `yes` if you want agent sessions to be able to inspect Apify runs directly.
+2. **Delete the 3 Gmail error drafts** manually (Daily Apt Digest — Apr 25, Apr 26, Apr 28/29).
+3. **StreetEasy coverage**: expand neighborhood/zip mapping for more NYC areas.
+4. **Decide on `apartments_com`**: drop from default runs or keep as experimental.
 
 ## Things Not To Reinvestigate First
 
-- Do not spend more time on minor Zillow header tweaks — actor delegation is the new strategy.
-- Do not assume Apartments.com is parser-broken when the page title is `Access Denied`.
+- Do not spend more time on Zillow minor header tweaks — actor delegation is the strategy if revisiting.
+- Do not assume Apartments.com is parser-broken when the page title is `Access Denied` — it's the bot block.
 - Do not assume Realtor is close to working without addressing the `401`/`429` behavior first.
